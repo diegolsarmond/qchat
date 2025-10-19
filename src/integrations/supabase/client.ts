@@ -2,19 +2,15 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const importMetaEnv = (() => {
-  try {
-    return (Function('return typeof import.meta !== "undefined" ? import.meta.env : undefined;')() as Record<string, string | undefined> | undefined);
-  } catch {
-    return undefined;
-  }
-})();
-
-const processEnv = typeof process !== 'undefined' && process?.env
-  ? process.env as Record<string, string | undefined>
+const importMetaEnv = typeof import.meta !== 'undefined'
+  ? ((import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? undefined)
   : undefined;
 
-const envSource = importMetaEnv ?? processEnv ?? {};
+const processEnv = typeof process !== 'undefined' && process?.env
+  ? (process.env as Record<string, string | undefined>)
+  : undefined;
+
+const envSource = (importMetaEnv ?? processEnv ?? {}) as Record<string, string | undefined>;
 
 const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? 'http://localhost';
 const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'test-key';
