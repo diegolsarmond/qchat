@@ -13,6 +13,9 @@ export function extractCurlUrls(input: string) {
 
   for (const match of input.matchAll(regex)) {
     const raw = match[1].replace(/[\\;]+$/, "");
+    if (!raw.startsWith("http://") && !raw.startsWith("https://")) {
+      continue;
+    }
     if (!seen.has(raw)) {
       seen.add(raw);
       result.push(raw);

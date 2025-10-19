@@ -59,23 +59,18 @@ curl 'https://quantumtecnologia-qchat-quantum.3a2ucf.easypanel.host/favicon.ico'
   -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36' \
   -H 'sec-ch-ua: "Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"' \
   -H 'sec-ch-ua-mobile: ?0' ;
-curl 'chrome-extension://iohjgamcilhbgmhbnllfolmkmmekfmci/icom.html?t=MzQ2NDc0Mzk2MTA3MTEzMjpbWyJuYW1lIiwiaWZyYW1lLWNvbSJdLFsidGFiSWQiLDEwNTYwMjcyMF1d' \
   -H 'upgrade-insecure-requests: 1' \
   -H 'sec-ch-ua: "Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"' \
   -H 'sec-ch-ua-mobile: ?0' \
   -H 'sec-ch-ua-platform: "Windows"' ;
-curl 'chrome-extension://iohjgamcilhbgmhbnllfolmkmmekfmci/injected-scripts/icom.js' \
   -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36' \
   -H 'referer;' ;
-curl 'chrome-extension://iohjgamcilhbgmhbnllfolmkmmekfmci/iui.html?t=NDkwMTA0ODI2MjIxMjk4OltbIm5hbWUiLCJpZnJhbWUtamFtLXVpIl0sWyJ0YWJJZCIsMTA1NjAyNzIwXV0' \
   -H 'upgrade-insecure-requests: 1' \
   -H 'sec-ch-ua: "Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"' \
   -H 'sec-ch-ua-mobile: ?0' \
   -H 'sec-ch-ua-platform: "Windows"' ;
-curl 'chrome-extension://iohjgamcilhbgmhbnllfolmkmmekfmci/assets/index.css' \
   -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36' \
   -H 'referer;' ;
-curl 'chrome-extension://iohjgamcilhbgmhbnllfolmkmmekfmci/injected-scripts/iui.js' \
   -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36' \
   -H 'referer;'`;
 
@@ -86,11 +81,6 @@ test("extractCurlUrls identifica URLs distintas na ordem encontrada", () => {
     "https://fonts.googleapis.com/css?family=Nunito",
     "https://fonts.gstatic.com/s/nunito/v32/XRXI3I6Li01BKofiOc5wtlZ2di8HDLshdTQ3jw.woff2",
     "https://quantumtecnologia-qchat-quantum.3a2ucf.easypanel.host/favicon.ico",
-    "chrome-extension://iohjgamcilhbgmhbnllfolmkmmekfmci/icom.html?t=MzQ2NDc0Mzk2MTA3MTEzMjpbWyJuYW1lIiwiaWZyYW1lLWNvbSJdLFsidGFiSWQiLDEwNTYwMjcyMF1d",
-    "chrome-extension://iohjgamcilhbgmhbnllfolmkmmekfmci/injected-scripts/icom.js",
-    "chrome-extension://iohjgamcilhbgmhbnllfolmkmmekfmci/iui.html?t=NDkwMTA0ODI2MjIxMjk4OltbIm5hbWUiLCJpZnJhbWUtamFtLXVpIl0sWyJ0YWJJZCIsMTA1NjAyNzIwXV0",
-    "chrome-extension://iohjgamcilhbgmhbnllfolmkmmekfmci/assets/index.css",
-    "chrome-extension://iohjgamcilhbgmhbnllfolmkmmekfmci/injected-scripts/iui.js",
   ]);
 });
 
@@ -99,4 +89,20 @@ test("extractCurlUrls ignora flags antes da URL", () => {
     "curl -H 'accept: */*' --compressed -X POST https://api.example.com/v1/resource -d 'foo=bar'";
   const urls = [...extractCurlUrls(command)];
   assert.deepEqual(urls, ["https://api.example.com/v1/resource"]);
+});
+
+test("extractCurlUrls ignora protocolos não suportados", () => {
+  const command = String.raw`curl 'http://localhost:54321/auth/v1/signup' \
+  -H 'Content-Type: application/json;charset=UTF-8' \
+  --data-raw '{"email":"user@example.com"}' ;
+curl 'chrome-extension://sample/id.js' \
+  -H 'User-Agent: test' ;
+curl 'https://qchat.quantumtecnologia.com.br'`;
+
+  const urls = [...extractCurlUrls(command)];
+
+  assert.deepEqual(urls, [
+    "http://localhost:54321/auth/v1/signup",
+    "https://qchat.quantumtecnologia.com.br",
+  ]);
 });
