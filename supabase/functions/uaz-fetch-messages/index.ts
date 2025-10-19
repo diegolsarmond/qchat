@@ -19,6 +19,9 @@ serve(async (req) => {
       offset = 0,
       order = 'asc',
     } = await req.json();
+
+    const safeLimit = Math.max(1, Number(limit) || 50);
+    const safeOffset = Math.max(0, Number(offset) || 0);
     
     console.log('[UAZ Fetch Messages] Fetching messages for chat:', chatId);
 
@@ -67,7 +70,9 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         chatid: chat.wa_chat_id,
-        limit: limit,
+        limit: safeLimit,
+        offset: safeOffset,
+        order,
       }),
     });
 
@@ -114,7 +119,7 @@ serve(async (req) => {
       .select('*', { count: 'exact' })
       .eq('chat_id', chatId)
       .order('message_timestamp', { ascending: order !== 'desc' })
-      .range(offset, offset + limit - 1);
+      .range(safeOffset, safeOffset + safeLimit - 1);
 
     if (dbError) {
       console.error('[UAZ Fetch Messages] Failed to fetch from DB:', dbError);
@@ -124,11 +129,16 @@ serve(async (req) => {
       ? (dbMessages || []).slice().reverse()
       : (dbMessages || []);
 
+    const returnedCount = Array.isArray(dbMessages) ? dbMessages.length : 0;
+    const nextOffset = safeOffset + returnedCount;
+    const hasMore = (count || 0) > nextOffset;
+
     return new Response(
       JSON.stringify({
         messages: normalizedMessages,
         total: count || 0,
-        hasMore: (count || 0) > (offset + limit)
+        hasMore,
+        nextOffset,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
