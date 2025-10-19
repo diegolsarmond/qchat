@@ -101,3 +101,39 @@ test("performLogin realiza sign-in e redireciona após sucesso", async () => {
   assert.equal(toastCalls[0].title, "Bem-vindo");
   assert.deepEqual(loadingStates, [true, false]);
 });
+
+test("performLogin exibe erro quando signInWithPassword lança exceção", async () => {
+  const navigateCalls = [];
+  const toastCalls = [];
+  const loadingStates = [];
+
+  const module = loadLoginModule();
+  const performLogin = module.performLogin;
+
+  const result = await performLogin({
+    email: "usuario@example.com",
+    password: "senha-segura",
+    signInWithPassword: async () => {
+      throw new TypeError("Failed to fetch");
+    },
+    toast: (payload) => {
+      toastCalls.push(payload);
+    },
+    navigate: (path) => {
+      navigateCalls.push(path);
+    },
+    setLoading: (value) => {
+      loadingStates.push(value);
+    },
+  });
+
+  assert.equal(result, false);
+  assert.equal(navigateCalls.length, 0);
+  assert.equal(toastCalls.length, 1);
+  assert.deepEqual(toastCalls[0], {
+    title: "Erro ao entrar",
+    description: "Failed to fetch",
+    variant: "destructive",
+  });
+  assert.deepEqual(loadingStates, [true, false]);
+});

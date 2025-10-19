@@ -28,29 +28,41 @@ export const performLogin = async ({
 }: PerformLoginParams) => {
   setLoading(true);
 
-  const { error } = await signInWithPassword({
-    email,
-    password,
-  });
+  try {
+    const { error } = await signInWithPassword({
+      email,
+      password,
+    });
 
-  setLoading(false);
+    if (error) {
+      toast({
+        title: "Erro ao entrar",
+        description: error.message,
+        variant: "destructive",
+      });
+      return false;
+    }
 
-  if (error) {
+    toast({
+      title: "Bem-vindo",
+      description: "Login realizado com sucesso",
+    });
+
+    navigate("/");
+    return true;
+  } catch (exception) {
+    const description =
+      exception instanceof Error ? exception.message : "Erro inesperado";
+
     toast({
       title: "Erro ao entrar",
-      description: error.message,
+      description,
       variant: "destructive",
     });
     return false;
+  } finally {
+    setLoading(false);
   }
-
-  toast({
-    title: "Bem-vindo",
-    description: "Login realizado com sucesso",
-  });
-
-  navigate("/");
-  return true;
 };
 
 const Login = () => {
