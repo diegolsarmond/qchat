@@ -7,7 +7,7 @@ import { AssignChatDialog } from "@/components/AssignChatDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
-import { Chat, Message, User as WhatsAppUser } from "@/types/whatsapp";
+import { Chat, Message, User as WhatsAppUser, SendMessagePayload } from "@/types/whatsapp";
 import { mergeFetchedMessages } from "@/lib/message-order";
 import {
   applyMessagePaginationUpdate,
@@ -26,6 +26,12 @@ const mapApiMessage = (m: any): Message => ({
   timestamp: formatTimestamp(m.message_timestamp),
   from: m.from_me ? "me" : "them",
   status: m.status,
+  messageType: m.message_type,
+  mediaType: m.media_type,
+  caption: m.caption,
+  documentName: m.document_name,
+  mediaUrl: m.media_url,
+  mediaBase64: m.media_base64,
 });
 
 type IndexProps = {
@@ -253,7 +259,7 @@ const Index = ({ user }: IndexProps) => {
     }
   };
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (payload: SendMessagePayload) => {
     if (!selectedChat || !credentialId) return;
 
     try {
@@ -261,20 +267,35 @@ const Index = ({ user }: IndexProps) => {
         body: {
           credentialId,
           chatId: selectedChat.id,
-          content,
-          messageType: 'text'
+          content: payload.content,
+          messageType: payload.messageType,
+          mediaType: payload.mediaType,
+          mediaUrl: payload.mediaUrl,
+          mediaBase64: payload.mediaBase64,
+          documentName: payload.documentName,
+          caption: payload.caption,
         }
       });
 
       if (error) throw error;
 
+      const messageContent = payload.messageType === 'text'
+        ? payload.content
+        : payload.caption || `[${payload.mediaType || 'mídia'}]`;
+
       const newMessage: Message = {
         id: data.messageId,
         chatId: selectedChat.id,
-        content,
+        content: messageContent,
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         from: 'me',
         status: 'sent',
+        messageType: payload.messageType,
+        mediaType: payload.mediaType,
+        caption: payload.caption,
+        documentName: payload.documentName,
+        mediaUrl: payload.mediaUrl,
+        mediaBase64: payload.mediaBase64,
       };
 
       setMessages(prev => [...prev, newMessage]);
@@ -284,9 +305,9 @@ const Index = ({ user }: IndexProps) => {
       }));
 
       // Update chat last message
-      setChats(chats.map(c => 
-        c.id === selectedChat.id 
-          ? { ...c, lastMessage: content, timestamp: newMessage.timestamp }
+      setChats(chats.map(c =>
+        c.id === selectedChat.id
+          ? { ...c, lastMessage: messageContent, timestamp: newMessage.timestamp }
           : c
       ));
 
