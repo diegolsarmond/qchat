@@ -36,15 +36,62 @@ const Index = () => {
     fetchUsers();
   }, []);
 
-  // Fetch chats when connected
+  // Fetch chats when connected and setup realtime
   useEffect(() => {
     if (isConnected && credentialId) {
       fetchChats();
-      // Poll for new chats every 10 seconds
-      const interval = setInterval(fetchChats, 10000);
-      return () => clearInterval(interval);
+      
+      // Setup realtime subscription for new messages
+      const chatsChannel = supabase
+        .channel('chats-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'chats',
+            filter: `credential_id=eq.${credentialId}`
+          },
+          (payload) => {
+            console.log('Chat change:', payload);
+            fetchChats(); // Refresh chats on any change
+          }
+        )
+        .subscribe();
+
+      const messagesChannel = supabase
+        .channel('messages-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages'
+          },
+          (payload) => {
+            console.log('New message:', payload);
+            if (selectedChat && payload.new.chat_id === selectedChat.id) {
+              // Add new message to current chat
+              const newMsg = payload.new as any;
+              setMessages(prev => [...prev, {
+                id: newMsg.id,
+                chatId: newMsg.chat_id,
+                content: newMsg.content || '',
+                timestamp: new Date(newMsg.message_timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                from: newMsg.from_me ? 'me' : 'them',
+                status: newMsg.status,
+              }]);
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(chatsChannel);
+        supabase.removeChannel(messagesChannel);
+      };
     }
-  }, [isConnected, credentialId]);
+  }, [isConnected, credentialId, selectedChat]);
 
   const fetchChats = async () => {
     if (!credentialId) return;
@@ -125,9 +172,29 @@ const Index = () => {
     });
   };
 
-  const handleSelectChat = (chat: Chat) => {
+  const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
     fetchMessages(chat.id);
+    
+    // Fetch and update contact details
+    if (credentialId) {
+      try {
+        const { data } = await supabase.functions.invoke('uaz-fetch-contact-details', {
+          body: { credentialId, chatId: chat.id }
+        });
+        
+        if (data) {
+          // Update chat in state with fresh details
+          setChats(chats.map(c => 
+            c.id === chat.id 
+              ? { ...c, name: data.name, avatar: data.avatar }
+              : c
+          ));
+        }
+      } catch (error) {
+        console.error('Error fetching contact details:', error);
+      }
+    }
   };
 
   const handleSendMessage = async (content: string) => {

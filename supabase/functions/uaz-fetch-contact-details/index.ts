@@ -12,9 +12,9 @@ serve(async (req) => {
   }
 
   try {
-    const { credentialId, chatId, content, messageType = 'text' } = await req.json();
+    const { credentialId, chatId } = await req.json();
     
-    console.log('[UAZ Send Message] Sending to chat:', chatId);
+    console.log('[UAZ Fetch Contact Details] Fetching for chat:', chatId);
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -49,13 +49,13 @@ serve(async (req) => {
       );
     }
 
-    // Extract phone number from wa_chat_id (format: 5531XXXXXXXX@s.whatsapp.net)
+    // Extract phone number from wa_chat_id
     const phoneNumber = chat.wa_chat_id.split('@')[0];
+    
+    console.log('[UAZ Fetch Contact Details] Fetching from UAZ API for:', phoneNumber);
 
-    console.log('[UAZ Send Message] Sending to number:', phoneNumber);
-
-    // Send message via UAZ API using POST /send/text
-    const messageResponse = await fetch(`https://${credential.subdomain}.uazapi.com/send/text`, {
+    // Fetch contact details from UAZ API using POST /chat/details
+    const detailsResponse = await fetch(`https://${credential.subdomain}.uazapi.com/chat/details`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -64,56 +64,44 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         number: phoneNumber,
-        text: content,
+        preview: false, // Get full resolution image
       }),
     });
 
-    if (!messageResponse.ok) {
-      const errorText = await messageResponse.text();
-      console.error('[UAZ Send Message] UAZ API error:', errorText);
+    if (!detailsResponse.ok) {
+      const errorText = await detailsResponse.text();
+      console.error('[UAZ Fetch Contact Details] UAZ API error:', errorText);
       return new Response(
-        JSON.stringify({ error: 'Failed to send message' }),
-        { status: messageResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Failed to fetch contact details' }),
+        { status: detailsResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const messageData = await messageResponse.json();
-    console.log('[UAZ Send Message] Message sent, ID:', messageData.Id);
+    const contactDetails = await detailsResponse.json();
+    
+    console.log('[UAZ Fetch Contact Details] Got details for:', contactDetails.name);
 
-    // Save message to database
-    const timestamp = Date.now();
-    const { error: insertError } = await supabaseClient
-      .from('messages')
-      .insert({
-        chat_id: chatId,
-        wa_message_id: messageData.Id || `msg_${timestamp}`,
-        content: content,
-        message_type: messageType,
-        from_me: true,
-        status: 'sent',
-        message_timestamp: timestamp,
-      });
-
-    if (insertError) {
-      console.error('[UAZ Send Message] Failed to save message:', insertError);
-    }
-
-    // Update last message in chat
+    // Update chat with contact details
     await supabaseClient
       .from('chats')
       .update({
-        last_message: content,
-        last_message_timestamp: timestamp,
+        name: contactDetails.name || contactDetails.wa_name || contactDetails.wa_contactName || phoneNumber,
+        avatar: contactDetails.image || null,
       })
       .eq('id', chatId);
 
     return new Response(
-      JSON.stringify({ success: true, messageId: messageData.Id }),
+      JSON.stringify({ 
+        name: contactDetails.name || contactDetails.wa_name || contactDetails.wa_contactName,
+        avatar: contactDetails.image,
+        phone: contactDetails.phone || phoneNumber,
+        isGroup: contactDetails.wa_isGroup || false,
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('[UAZ Send Message] Error:', error);
+    console.error('[UAZ Fetch Contact Details] Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ error: errorMessage }),
