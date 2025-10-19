@@ -47,6 +47,19 @@ const customRequire = (specifier) => {
     return actual;
   }
 
+  if (
+    specifier === "@/integrations/supabase/client" ||
+    specifier.endsWith("/integrations/supabase/client")
+  ) {
+    return {
+      supabase: {
+        auth: {
+          signOut: async () => {},
+        },
+      },
+    };
+  }
+
   try {
     return baseRequire(specifier);
   } catch (error) {

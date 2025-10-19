@@ -56,3 +56,33 @@ test("applyMessagePaginationUpdate acumula offset para novas páginas", () => {
   assert.equal(updated.offset, 25);
   assert.equal(updated.hasMore, false);
 });
+
+test("paginacao sequencial usa offset acumulado para evitar lotes repetidos", () => {
+  const limit = 2;
+  const dataset = ["m1", "m2", "m3", "m4"];
+  const fetchBatch = (offset) => dataset.slice(offset, offset + limit);
+
+  const initial = createInitialMessagePagination(limit);
+  const firstBatch = fetchBatch(initial.offset);
+  const firstNextOffset = initial.offset + firstBatch.length;
+  const afterFirst = applyMessagePaginationUpdate(initial, firstNextOffset, {
+    reset: true,
+    hasMore: true,
+    limit,
+  });
+
+  const secondBatch = fetchBatch(afterFirst.offset);
+  const secondNextOffset = afterFirst.offset + secondBatch.length;
+  const afterSecond = applyMessagePaginationUpdate(afterFirst, secondNextOffset - afterFirst.offset, {
+    hasMore: false,
+  });
+
+  assert.equal(afterFirst.offset, firstNextOffset);
+  assert.equal(afterSecond.offset, secondNextOffset);
+  assert.equal(firstBatch.length, limit);
+  assert.equal(secondBatch.length, limit);
+  const firstIds = new Set(firstBatch);
+  for (const id of secondBatch) {
+    assert.equal(firstIds.has(id), false);
+  }
+});
