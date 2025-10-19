@@ -16,7 +16,7 @@ const processEnv = typeof process !== 'undefined' && process?.env
 
 const envSource = importMetaEnv ?? processEnv ?? {};
 
-const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? 'http://localhost';
+const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? 'http://localhost:54321';
 const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'test-key';
 
 const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
