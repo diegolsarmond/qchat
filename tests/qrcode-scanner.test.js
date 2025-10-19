@@ -117,7 +117,7 @@ const loadQRCodeScanner = (reactStub, options) => {
   return module.exports;
 };
 
-test("QRCodeScanner interrompe polling após obter um QR code", async () => {
+test("QRCodeScanner continua polling após obter um QR code até detectar conexão", async () => {
   const reactStub = createReactStub();
   const invokeCalls = [];
   const toastCalls = [];
@@ -178,12 +178,105 @@ test("QRCodeScanner interrompe polling após obter um QR code", async () => {
     assert.ok(intervalCallback, "interval callback should be registered");
 
     await intervalCallback();
+    await Promise.resolve();
+    await Promise.resolve();
 
-    assert.equal(invokeCalls.length, 1);
-    assert.ok(clearedIntervals.includes(42));
+    assert.equal(invokeCalls.length, 2);
+    assert.equal(clearedIntervals.length, 0);
   } finally {
     reactStub.__runCleanups();
     global.setInterval = originalSetInterval;
     global.clearInterval = originalClearInterval;
+  }
+});
+
+test("QRCodeScanner encerra polling quando a conexão é detectada", async () => {
+  const reactStub = createReactStub();
+  const invokeCalls = [];
+  const toastCalls = [];
+
+  let callIndex = 0;
+  const supabaseStub = {
+    functions: {
+      async invoke() {
+        invokeCalls.push("fetch");
+        callIndex += 1;
+        if (callIndex === 1) {
+          return { data: { qrCode: "data:image/png;base64,def" }, error: null };
+        }
+        return { data: { connected: true, phoneNumber: "551199999999" }, error: null };
+      },
+    },
+    from() {
+      return {
+        select() {
+          return {
+            eq() {
+              return {
+                async single() {
+                  return { data: { instance_name: "Instance" }, error: null };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const toastStub = (payload) => {
+    toastCalls.push(payload);
+  };
+
+  const originalSetInterval = global.setInterval;
+  const originalClearInterval = global.clearInterval;
+  const originalSetTimeout = global.setTimeout;
+  let intervalCallback;
+  const clearedIntervals = [];
+  let timeoutCallback;
+  let timeoutDelay;
+
+  global.setInterval = (callback) => {
+    intervalCallback = callback;
+    return 99;
+  };
+  global.clearInterval = (id) => {
+    clearedIntervals.push(id);
+  };
+  global.setTimeout = (callback, delay) => {
+    timeoutCallback = callback;
+    timeoutDelay = delay;
+    return 123;
+  };
+
+  const onConnectedCalls = [];
+
+  try {
+    const module = loadQRCodeScanner(reactStub, { supabaseStub, toastStub });
+    const { QRCodeScanner } = module;
+
+    reactStub.__render(QRCodeScanner, { credentialId: "cred", onConnected: () => onConnectedCalls.push(true) });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.equal(invokeCalls.length, 1);
+    assert.ok(intervalCallback, "interval callback should be registered");
+
+    await intervalCallback();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.equal(invokeCalls.length, 2);
+    assert.deepEqual(clearedIntervals, [99]);
+    assert.equal(timeoutDelay, 500);
+    timeoutCallback?.();
+    assert.equal(onConnectedCalls.length, 1);
+  } finally {
+    reactStub.__runCleanups();
+    global.setInterval = originalSetInterval;
+    global.clearInterval = originalClearInterval;
+    global.setTimeout = originalSetTimeout;
   }
 });
