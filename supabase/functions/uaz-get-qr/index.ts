@@ -38,11 +38,11 @@ serve(async (req) => {
 
     console.log('[UAZ Get QR] Fetching instance info from:', credential.subdomain);
 
-    // Get instance info from UAZ API
-    const instanceResponse = await fetch(`https://${credential.subdomain}.uazapi.com/instance/getinfo`, {
+    // Get instance status from UAZ API
+    const instanceResponse = await fetch(`https://${credential.subdomain}.uazapi.com/instance/status`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'token': credential.token,
       },
     });
@@ -56,24 +56,25 @@ serve(async (req) => {
     }
 
     const instanceData = await instanceResponse.json();
-    console.log('[UAZ Get QR] Instance status:', instanceData.instance?.status);
+    console.log('[UAZ Get QR] Instance status:', instanceData.status);
+    console.log('[UAZ Get QR] Full response:', JSON.stringify(instanceData, null, 2));
 
     // Update credential in database
     const updateData: any = {
-      status: instanceData.instance?.status || 'disconnected',
+      status: instanceData.status || 'disconnected',
       updated_at: new Date().toISOString(),
     };
 
-    if (instanceData.instance?.qrcode) {
-      updateData.qr_code = instanceData.instance.qrcode;
+    if (instanceData.qrcode) {
+      updateData.qr_code = instanceData.qrcode;
     }
 
-    if (instanceData.instance?.profileName) {
-      updateData.profile_name = instanceData.instance.profileName;
+    if (instanceData.profileName) {
+      updateData.profile_name = instanceData.profileName;
     }
 
-    if (instanceData.status?.jid?.user) {
-      updateData.phone_number = instanceData.status.jid.user;
+    if (instanceData.phoneNumber) {
+      updateData.phone_number = instanceData.phoneNumber;
     }
 
     const { error: updateError } = await supabaseClient
@@ -87,11 +88,12 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        status: updateData.status,
-        qrCode: updateData.qr_code,
-        profileName: updateData.profile_name,
-        phoneNumber: updateData.phone_number,
-        connected: instanceData.status?.connected || false,
+        status: instanceData.status || 'disconnected',
+        qrCode: instanceData.qrcode,
+        profileName: instanceData.profileName,
+        phoneNumber: instanceData.phoneNumber,
+        connected: instanceData.status === 'connected',
+        pairingCode: instanceData.pairingCode,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
