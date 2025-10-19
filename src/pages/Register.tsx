@@ -28,29 +28,45 @@ export const performRegister = async ({
 }: PerformRegisterParams) => {
   setLoading(true);
 
-  const { error } = await signUp({
-    email,
-    password,
-  });
+  try {
+    const { error } = await signUp({
+      email,
+      password,
+    });
 
-  setLoading(false);
+    if (error) {
+      toast({
+        title: "Erro ao cadastrar",
+        description: error.message,
+        variant: "destructive",
+      });
+      return false;
+    }
 
-  if (error) {
+    toast({
+      title: "Conta criada",
+      description: "Cadastro realizado com sucesso",
+    });
+
+    navigate("/login");
+    return true;
+  } catch (unknownError) {
+    const message =
+      typeof unknownError === "object" &&
+      unknownError !== null &&
+      "message" in unknownError &&
+      typeof (unknownError as { message?: unknown }).message === "string"
+        ? (unknownError as { message: string }).message
+        : "Erro inesperado";
     toast({
       title: "Erro ao cadastrar",
-      description: error.message,
+      description: message,
       variant: "destructive",
     });
     return false;
+  } finally {
+    setLoading(false);
   }
-
-  toast({
-    title: "Conta criada",
-    description: "Cadastro realizado com sucesso",
-  });
-
-  navigate("/login");
-  return true;
 };
 
 const Register = () => {

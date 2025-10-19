@@ -101,3 +101,40 @@ test("performRegister realiza sign-up e redireciona após sucesso", async () => 
   assert.equal(toastCalls[0].title, "Conta criada");
   assert.deepEqual(loadingStates, [true, false]);
 });
+
+test("performRegister trata exceções lançadas pelo signUp", async () => {
+  const signUpCalls = [];
+  const navigateCalls = [];
+  const toastCalls = [];
+  const loadingStates = [];
+
+  const module = loadRegisterModule();
+  const performRegister = module.performRegister;
+
+  const result = await performRegister({
+    email: "falha@example.com",
+    password: "senha-forte",
+    signUp: async (credentials) => {
+      signUpCalls.push(credentials);
+      throw new Error("Falha inesperada");
+    },
+    toast: (payload) => {
+      toastCalls.push(payload);
+    },
+    navigate: (path) => {
+      navigateCalls.push(path);
+    },
+    setLoading: (value) => {
+      loadingStates.push(value);
+    },
+  });
+
+  assert.equal(result, false);
+  assert.equal(signUpCalls.length, 1);
+  assert.equal(navigateCalls.length, 0);
+  assert.equal(toastCalls.length, 1);
+  assert.equal(toastCalls[0].title, "Erro ao cadastrar");
+  assert.equal(toastCalls[0].description, "Falha inesperada");
+  assert.equal(toastCalls[0].variant, "destructive");
+  assert.deepEqual(loadingStates, [true, false]);
+});
