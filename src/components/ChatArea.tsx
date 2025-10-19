@@ -96,8 +96,21 @@ export const ChatArea = ({
     return (
       <div
         data-testid="chat-area-placeholder"
-        className={`flex-1 items-center justify-center bg-[hsl(var(--whatsapp-chat-bg))] ${showSidebar ? 'hidden md:flex' : 'flex'}`}
+        className={`relative flex-1 items-center justify-center bg-[hsl(var(--whatsapp-chat-bg))] ${showSidebar ? 'hidden md:flex' : 'flex'}`}
       >
+        {!showSidebar && (
+          <div className="absolute top-4 left-4 md:hidden">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-primary-foreground hover:bg-white/10"
+              onClick={onShowSidebar}
+              aria-label="Voltar para conversas"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+          </div>
+        )}
         <div className="text-center space-y-4">
           <div className="w-64 h-64 mx-auto opacity-20">
             <svg viewBox="0 0 303 172" className="w-full h-full">
