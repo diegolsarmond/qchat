@@ -37,13 +37,20 @@ serve(async (req) => {
 
     console.log('[UAZ Fetch Chats] Fetching from UAZ API');
 
-    // Fetch chats from UAZ API
-    const chatsResponse = await fetch(`https://${credential.subdomain}.uazapi.com/chats/getAll`, {
-      method: 'GET',
+    // Fetch chats from UAZ API using POST /chat/find
+    const chatsResponse = await fetch(`https://${credential.subdomain}.uazapi.com/chat/find`, {
+      method: 'POST',
       headers: {
+        'Accept': 'application/json',
         'Content-Type': 'application/json',
         'token': credential.token,
       },
+      body: JSON.stringify({
+        operator: 'AND',
+        sort: '-wa_lastMsgTimestamp',
+        limit: 100,
+        offset: 0
+      })
     });
 
     if (!chatsResponse.ok) {
