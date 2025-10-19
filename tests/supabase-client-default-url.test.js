@@ -2,70 +2,76 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-const originalUrl = process.env.VITE_SUPABASE_URL;
-const originalKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const moduleUrl = new URL('../src/integrations/supabase/client.ts', import.meta.url);
+const modulePath = fileURLToPath(moduleUrl);
+const source = readFileSync(modulePath, 'utf-8');
 
-test('usa porta local padrão ao criar o cliente supabase', async () => {
-  delete process.env.VITE_SUPABASE_URL;
-  delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const loadSupabaseClientUrl = ({ importMetaEnv, processEnv } = {}) => {
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2019,
+      esModuleInterop: true,
+    },
+    fileName: modulePath,
+  });
 
-  try {
-    const moduleUrl = new URL('../src/integrations/supabase/client.ts', import.meta.url);
-    const modulePath = fileURLToPath(moduleUrl);
-    const source = readFileSync(modulePath, 'utf-8');
-    const { outputText } = ts.transpileModule(source, {
-      compilerOptions: {
-        module: ts.ModuleKind.CommonJS,
-        target: ts.ScriptTarget.ES2019,
-        esModuleInterop: true,
-      },
-      fileName: modulePath,
-    });
+  const patchedOutput = outputText.replace(/import\.meta/g, 'globalThis.__import_meta__');
 
-    const module = { exports: {} };
-    const requireFn = createRequire(modulePath);
+  const capture = { url: '' };
+  const contextProcess = { env: { ...(processEnv ?? {}) } };
 
-    let capturedUrl = '';
+  const module = { exports: {} };
 
-    const customRequire = (specifier) => {
+  const sandbox = {
+    module,
+    exports: module.exports,
+    require: (specifier) => {
       if (specifier === '@supabase/supabase-js') {
         return {
           createClient: (url) => {
-            capturedUrl = url;
+            capture.url = url;
             return {};
           }
         };
       }
+
       if (specifier === './types') {
         return {};
       }
-      return requireFn(specifier);
-    };
 
-    vm.runInNewContext(outputText, {
-      module,
-      exports: module.exports,
-      require: customRequire,
-      process,
-      console,
-    }, { filename: modulePath });
+      throw new Error(`Módulo inesperado: ${specifier}`);
+    },
+    console,
+    process: contextProcess,
+  };
 
-    assert.equal(capturedUrl, 'http://localhost:54321');
-  } finally {
-    if (originalUrl === undefined) {
-      delete process.env.VITE_SUPABASE_URL;
-    } else {
-      process.env.VITE_SUPABASE_URL = originalUrl;
-    }
+  sandbox.globalThis = sandbox;
 
-    if (originalKey === undefined) {
-      delete process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-    } else {
-      process.env.VITE_SUPABASE_PUBLISHABLE_KEY = originalKey;
-    }
+  if (importMetaEnv) {
+    sandbox.__import_meta__ = { env: importMetaEnv };
   }
+
+  vm.runInNewContext(patchedOutput, sandbox, { filename: modulePath });
+
+  return capture.url;
+};
+
+test('usa porta local padrão ao criar o cliente supabase', () => {
+  const capturedUrl = loadSupabaseClientUrl();
+  assert.equal(capturedUrl, 'http://localhost:54321');
+});
+
+test('utiliza a url definida em import.meta.env quando disponível', () => {
+  const capturedUrl = loadSupabaseClientUrl({
+    importMetaEnv: {
+      VITE_SUPABASE_URL: 'https://example.supabase.co',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'public-key',
+    },
+  });
+
+  assert.equal(capturedUrl, 'https://example.supabase.co');
 });
