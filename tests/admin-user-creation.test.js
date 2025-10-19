@@ -43,6 +43,7 @@ const loadAdminModule = () => {
             admin: { createUser: async () => ({ data: null, error: null }) },
           },
           from: () => ({ select: async () => ({ count: 0 }) }),
+          functions: { invoke: async () => ({ data: null, error: null }) },
         },
       };
     }
@@ -88,10 +89,10 @@ test("performAdminUserCreation cria usuário e atualiza métricas", async () => 
   const result = await performAdminUserCreation({
     email: "colaborador@empresa.com",
     password: "senhaSegura123",
-    createUser: async (payload) => {
-      createUserCalls.push(payload);
-      return { data: {}, error: null };
-    },
+      createUser: async (payload) => {
+        createUserCalls.push(payload);
+        return { error: null };
+      },
     fetchCounts: async () => ({ usersCount: 5, chatsCount: 12 }),
     updateStats: (stats) => {
       statsCalls.push(stats);
@@ -105,7 +106,6 @@ test("performAdminUserCreation cria usuário e atualiza métricas", async () => 
   assert.equal(createUserCalls.length, 1);
   assert.equal(createUserCalls[0].email, "colaborador@empresa.com");
   assert.equal(createUserCalls[0].password, "senhaSegura123");
-  assert.equal(createUserCalls[0].email_confirm, true);
   assert.equal(statsCalls.length, 1);
   assert.equal(statsCalls[0][0].value, "5");
   assert.equal(statsCalls[0][1].value, "12");

@@ -45,7 +45,9 @@ const formatStats = (usersCount: number, chatsCount: number): AdminStat[] => [
 type PerformAdminUserCreationParams = {
   email: string;
   password: string;
-  createUser: typeof supabase.auth.admin.createUser;
+  createUser: (payload: { email: string; password: string }) => Promise<{
+    error: { message: string } | null;
+  }>;
   fetchCounts: () => Promise<{ usersCount: number; chatsCount: number }>;
   updateStats: (nextStats: AdminStat[]) => void;
   toast: (options: { title: string; description: string; variant?: string }) => void;
@@ -60,7 +62,7 @@ export const performAdminUserCreation = async ({
   toast,
 }: PerformAdminUserCreationParams) => {
   try {
-    const { error } = await createUser({ email, password, email_confirm: true });
+    const { error } = await createUser({ email, password });
 
     if (error) {
       toast({
@@ -182,7 +184,26 @@ const Admin = () => {
       const result = await performAdminUserCreation({
         email: createEmail,
         password: createPassword,
-        createUser: supabase.auth.admin.createUser.bind(supabase.auth.admin),
+        createUser: async ({ email, password }) => {
+          const { data, error } = await supabase.functions.invoke("admin-create-user", {
+            body: { email, password },
+          });
+
+          if (error) {
+            return { error: { message: error.message } };
+          }
+
+          if (data && typeof data === "object" && "error" in data && data.error) {
+            const errorMessage =
+              typeof (data as { error?: unknown }).error === "string"
+                ? ((data as { error: string }).error ?? "Erro inesperado")
+                : "Erro inesperado";
+
+            return { error: { message: errorMessage } };
+          }
+
+          return { error: null };
+        },
         fetchCounts,
         updateStats: setStats,
         toast,
