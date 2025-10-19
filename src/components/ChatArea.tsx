@@ -3,17 +3,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Search, 
-  MoreVertical, 
-  Paperclip, 
-  Smile, 
-  Mic, 
+import {
+  Search,
+  MoreVertical,
+  Paperclip,
+  Smile,
+  Mic,
   Send,
   Phone,
   Video,
   Check,
-  CheckCheck
+  CheckCheck,
+  ArrowLeft
 } from "lucide-react";
 import { Chat, Message } from "@/types/whatsapp";
 import {
@@ -32,6 +33,8 @@ interface ChatAreaProps {
   hasMoreMessages?: boolean;
   isLoadingMoreMessages?: boolean;
   isPrependingMessages?: boolean;
+  showSidebar: boolean;
+  onShowSidebar: () => void;
 }
 
 export const ChatArea = ({
@@ -43,6 +46,8 @@ export const ChatArea = ({
   hasMoreMessages = false,
   isLoadingMoreMessages = false,
   isPrependingMessages = false,
+  showSidebar,
+  onShowSidebar,
 }: ChatAreaProps) => {
   const [messageText, setMessageText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -89,7 +94,10 @@ export const ChatArea = ({
 
   if (!chat) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[hsl(var(--whatsapp-chat-bg))]">
+      <div
+        data-testid="chat-area-placeholder"
+        className={`flex-1 items-center justify-center bg-[hsl(var(--whatsapp-chat-bg))] ${showSidebar ? 'hidden md:flex' : 'flex'}`}
+      >
         <div className="text-center space-y-4">
           <div className="w-64 h-64 mx-auto opacity-20">
             <svg viewBox="0 0 303 172" className="w-full h-full">
@@ -108,10 +116,22 @@ export const ChatArea = ({
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-[hsl(var(--whatsapp-chat-bg))]">
+    <div
+      data-testid="chat-area"
+      className={`flex-1 flex flex-col bg-[hsl(var(--whatsapp-chat-bg))] ${showSidebar ? 'hidden md:flex' : 'flex'}`}
+    >
       {/* Chat Header */}
       <div className="bg-[hsl(var(--whatsapp-header))] p-3 flex items-center justify-between border-b border-[hsl(var(--whatsapp-border))]">
         <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-primary-foreground hover:bg-white/10 md:hidden"
+            onClick={onShowSidebar}
+            aria-label="Voltar para conversas"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
           <Avatar className="w-10 h-10">
             <AvatarImage src={chat.avatar} />
             <AvatarFallback className="bg-primary/10 text-primary">

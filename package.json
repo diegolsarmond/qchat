@@ -9,7 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test"
+    "test": "NODE_OPTIONS=--experimental-loader=./scripts/test-ts-loader.mjs node --test tests src/pages/__tests__/Index.mobile.test.tsx"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

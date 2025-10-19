@@ -12,9 +12,11 @@ interface ChatSidebarProps {
   selectedChat: Chat | null;
   onSelectChat: (chat: Chat) => void;
   onAssignChat: (chatId: string) => void;
+  showSidebar: boolean;
+  onToggleSidebar: () => void;
 }
 
-export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat }: ChatSidebarProps) => {
+export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat, showSidebar, onToggleSidebar }: ChatSidebarProps) => {
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -25,7 +27,10 @@ export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat }:
   };
 
   return (
-    <div className="w-full md:w-96 bg-[hsl(var(--whatsapp-sidebar))] border-r border-[hsl(var(--whatsapp-border))] flex flex-col h-screen">
+    <div
+      data-testid="chat-sidebar"
+      className={`w-full md:w-96 bg-[hsl(var(--whatsapp-sidebar))] border-r border-[hsl(var(--whatsapp-border))] flex-col h-screen ${showSidebar ? 'flex' : 'hidden'} md:flex`}
+    >
       {/* Header */}
       <div className="bg-[hsl(var(--whatsapp-header))] p-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -35,6 +40,15 @@ export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat }:
           <h1 className="text-lg font-semibold text-primary-foreground">WhatsApp</h1>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-primary-foreground hover:bg-white/10 md:hidden"
+            onClick={onToggleSidebar}
+            aria-label="Abrir conversa"
+          >
+            <MessageSquare className="w-5 h-5" />
+          </Button>
           <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-white/10">
             <Users className="w-5 h-5" />
           </Button>
