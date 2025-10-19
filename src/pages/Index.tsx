@@ -1,238 +1,181 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CredentialSetup } from "@/components/CredentialSetup";
 import { QRCodeScanner } from "@/components/QRCodeScanner";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { ChatArea } from "@/components/ChatArea";
 import { AssignChatDialog } from "@/components/AssignChatDialog";
-import { Credential, Chat, Message, User } from "@/types/whatsapp";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { Chat, Message, User } from "@/types/whatsapp";
 
 const Index = () => {
-  const [credential, setCredential] = useState<Credential | null>(null);
+  const [credentialId, setCredentialId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [chatToAssign, setChatToAssign] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
 
-  // Mock data
-  const [chats, setChats] = useState<Chat[]>([
-    {
-      id: "1",
-      name: "Itaú Pix",
-      lastMessage: "Feito via WhatsApp Itaú!",
-      timestamp: "11:41",
-      unread: 0,
-      isGroup: false,
-      avatar: "https://api.dicebear.com/7.x/initials/svg?seed=IP",
-    },
-    {
-      id: "2",
-      name: "Diego Armond (você)",
-      lastMessage: "553187870292",
-      timestamp: "Ontem",
-      unread: 0,
-      isGroup: false,
-      avatar: "https://api.dicebear.com/7.x/initials/svg?seed=DA",
-    },
-    {
-      id: "3",
-      name: "Roberto Armond",
-      lastMessage: "Vem dormir aqui",
-      timestamp: "22:28",
-      unread: 2,
-      isGroup: false,
-      avatar: "https://api.dicebear.com/7.x/initials/svg?seed=RA",
-    },
-    {
-      id: "4",
-      name: "Grupo - Ícaro da Hora",
-      lastMessage: "~ Leandro: https://olhardigital.com.br/2025/10/...",
-      timestamp: "22:10",
-      unread: 37,
-      isGroup: true,
-      avatar: "https://api.dicebear.com/7.x/initials/svg?seed=GI",
-    },
-    {
-      id: "5",
-      name: "Thiago Armond",
-      lastMessage: "pf",
-      timestamp: "22:00",
-      unread: 4,
-      isGroup: false,
-      avatar: "https://api.dicebear.com/7.x/initials/svg?seed=TA",
-    },
-  ]);
+  // Fetch users on mount
+  useEffect(() => {
+    const fetchUsers = async () => {
+      const { data } = await supabase.from('users').select('*');
+      if (data) {
+        setUsers(data.map(u => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          avatar: u.avatar || undefined,
+        })));
+      }
+    };
+    fetchUsers();
+  }, []);
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      chatId: "3",
-      content: "oi vou n",
-      timestamp: "18:31",
-      from: "me",
-      status: "read",
-    },
-    {
-      id: "2",
-      chatId: "3",
-      content: "tenho mt coisa pra resolver",
-      timestamp: "18:31",
-      from: "me",
-      status: "read",
-    },
-    {
-      id: "3",
-      chatId: "3",
-      content: "pra viajar",
-      timestamp: "18:31",
-      from: "me",
-      status: "read",
-    },
-    {
-      id: "4",
-      chatId: "3",
-      content: "Vamos comer uma carne aqui",
-      timestamp: "18:39",
-      from: "them",
-    },
-    {
-      id: "5",
-      chatId: "3",
-      content: "Vem vc",
-      timestamp: "18:40",
-      from: "me",
-      status: "read",
-    },
-    {
-      id: "6",
-      chatId: "3",
-      content: "Eu tô trabalhando e preciso resolver as coisas da viagem",
-      timestamp: "18:40",
-      from: "me",
-      status: "read",
-    },
-    {
-      id: "7",
-      chatId: "3",
-      content: "Só eu q vou ai",
-      timestamp: "18:40",
-      from: "me",
-      status: "read",
-    },
-    {
-      id: "8",
-      chatId: "3",
-      content: "Vou não Diego",
-      timestamp: "18:40",
-      from: "them",
-    },
-    {
-      id: "9",
-      chatId: "3",
-      content: "Se não o Hugo fica",
-      timestamp: "18:41",
-      from: "them",
-    },
-    {
-      id: "10",
-      chatId: "3",
-      content: "Oi",
-      timestamp: "22:10",
-      from: "them",
-    },
-    {
-      id: "11",
-      chatId: "3",
-      content: "Está tudo bem ai",
-      timestamp: "22:10",
-      from: "them",
-    },
-    {
-      id: "12",
-      chatId: "3",
-      content: "SIM",
-      timestamp: "22:23",
-      from: "me",
-      status: "read",
-    },
-    {
-      id: "13",
-      chatId: "3",
-      content: "Está só",
-      timestamp: "22:24",
-      from: "them",
-    },
-    {
-      id: "14",
-      chatId: "3",
-      content: "To",
-      timestamp: "22:24",
-      from: "me",
-      status: "read",
-    },
-    {
-      id: "15",
-      chatId: "3",
-      content: "Vem dormir aqui",
-      timestamp: "22:28",
-      from: "them",
-    },
-  ]);
+  // Fetch chats when connected
+  useEffect(() => {
+    if (isConnected && credentialId) {
+      fetchChats();
+      // Poll for new chats every 10 seconds
+      const interval = setInterval(fetchChats, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [isConnected, credentialId]);
 
-  const users: User[] = [
-    { id: "1", name: "João Silva", email: "joao@example.com" },
-    { id: "2", name: "Maria Santos", email: "maria@example.com" },
-    { id: "3", name: "Pedro Costa", email: "pedro@example.com" },
-  ];
+  const fetchChats = async () => {
+    if (!credentialId) return;
 
-  const handleSetupComplete = (cred: Credential) => {
-    setCredential(cred);
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('uaz-fetch-chats', {
+        body: { credentialId }
+      });
+
+      if (error) throw error;
+
+      if (data?.chats) {
+        setChats(data.chats.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          lastMessage: c.last_message || '',
+          timestamp: c.last_message_timestamp 
+            ? new Date(c.last_message_timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            : '',
+          unread: c.unread_count || 0,
+          avatar: c.avatar || undefined,
+          isGroup: c.is_group || false,
+          assignedTo: c.assigned_to || undefined,
+        })));
+      }
+    } catch (error) {
+      console.error('Error fetching chats:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao carregar conversas",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchMessages = async (chatId: string) => {
+    if (!credentialId) return;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('uaz-fetch-messages', {
+        body: { credentialId, chatId }
+      });
+
+      if (error) throw error;
+
+      if (data?.messages) {
+        setMessages(data.messages.map((m: any) => ({
+          id: m.id,
+          chatId: m.chat_id,
+          content: m.content || '',
+          timestamp: new Date(m.message_timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+          from: m.from_me ? 'me' : 'them',
+          status: m.status,
+        })));
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao carregar mensagens",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSetupComplete = (id: string) => {
+    setCredentialId(id);
   };
 
   const handleConnected = () => {
     setIsConnected(true);
-    if (credential) {
-      setCredential({ ...credential, status: 'connected' });
-    }
+    toast({
+      title: "Conectado!",
+      description: "WhatsApp conectado com sucesso",
+    });
   };
 
   const handleSelectChat = (chat: Chat) => {
     setSelectedChat(chat);
+    fetchMessages(chat.id);
   };
 
-  const handleSendMessage = (content: string) => {
-    if (!selectedChat) return;
+  const handleSendMessage = async (content: string) => {
+    if (!selectedChat || !credentialId) return;
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      chatId: selectedChat.id,
-      content,
-      timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      from: 'me',
-      status: 'sent',
-    };
+    try {
+      const { data, error } = await supabase.functions.invoke('uaz-send-message', {
+        body: {
+          credentialId,
+          chatId: selectedChat.id,
+          content,
+          messageType: 'text'
+        }
+      });
 
-    setMessages([...messages, newMessage]);
+      if (error) throw error;
 
-    // Update chat's last message
-    setChats(chats.map(chat => 
-      chat.id === selectedChat.id 
-        ? { ...chat, lastMessage: content, timestamp: newMessage.timestamp }
-        : chat
-    ));
+      // Add message to local state
+      const newMessage: Message = {
+        id: data.messageId,
+        chatId: selectedChat.id,
+        content,
+        timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        from: 'me',
+        status: 'sent',
+      };
 
-    // Simulate message delivery
-    setTimeout(() => {
-      setMessages(msgs => msgs.map(msg => 
-        msg.id === newMessage.id ? { ...msg, status: 'delivered' as const } : msg
+      setMessages([...messages, newMessage]);
+
+      // Update chat last message
+      setChats(chats.map(c => 
+        c.id === selectedChat.id 
+          ? { ...c, lastMessage: content, timestamp: newMessage.timestamp }
+          : c
       ));
-    }, 1000);
 
-    // Simulate message read
-    setTimeout(() => {
-      setMessages(msgs => msgs.map(msg => 
-        msg.id === newMessage.id ? { ...msg, status: 'read' as const } : msg
-      ));
-    }, 2000);
+      toast({
+        title: "Enviado",
+        description: "Mensagem enviada com sucesso",
+      });
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao enviar mensagem",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleAssignChat = (chatId: string) => {
@@ -240,30 +183,46 @@ const Index = () => {
     setAssignDialogOpen(true);
   };
 
-  const handleAssignToUser = (userId: string) => {
+  const handleAssignToUser = async (userId: string) => {
     if (!chatToAssign) return;
 
-    const user = users.find(u => u.id === userId);
-    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('chats')
+        .update({ assigned_to: userId })
+        .eq('id', chatToAssign);
 
-    setChats(chats.map(chat => 
-      chat.id === chatToAssign 
-        ? { ...chat, assignedTo: user.name }
-        : chat
-    ));
+      if (error) throw error;
 
-    setChatToAssign(null);
+      setChats(chats.map(c => 
+        c.id === chatToAssign ? { ...c, assignedTo: userId } : c
+      ));
+
+      toast({
+        title: "Atribuído",
+        description: "Conversa atribuída com sucesso",
+      });
+
+      setAssignDialogOpen(false);
+    } catch (error) {
+      console.error('Error assigning chat:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao atribuir conversa",
+        variant: "destructive",
+      });
+    }
   };
 
   const currentChatMessages = messages.filter(m => m.chatId === selectedChat?.id);
 
   // Setup flow
-  if (!credential) {
+  if (!credentialId) {
     return <CredentialSetup onSetupComplete={handleSetupComplete} />;
   }
 
   if (!isConnected) {
-    return <QRCodeScanner credential={credential} onConnected={handleConnected} />;
+    return <QRCodeScanner credentialId={credentialId} onConnected={handleConnected} />;
   }
 
   // Main WhatsApp interface

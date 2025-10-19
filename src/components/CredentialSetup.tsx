@@ -4,10 +4,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { MessageSquare } from "lucide-react";
-import { Credential } from "@/types/whatsapp";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface CredentialSetupProps {
-  onSetupComplete: (credential: Credential) => void;
+  onSetupComplete: (credentialId: string) => void;
 }
 
 export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
@@ -15,21 +16,55 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
   const [subdomain, setSubdomain] = useState("");
   const [token, setToken] = useState("");
   const [adminToken, setAdminToken] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const credential: Credential = {
-      id: crypto.randomUUID(),
-      instanceName,
-      subdomain,
-      token,
-      adminToken: adminToken || undefined,
-      status: 'disconnected',
-      createdAt: new Date(),
-    };
+    if (!instanceName || !subdomain || !token) {
+      toast({
+        title: "Erro",
+        description: "Preencha todos os campos obrigatórios",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    onSetupComplete(credential);
+    setLoading(true);
+
+    try {
+      // Insert credential into database
+      const { data, error } = await supabase
+        .from('credentials')
+        .insert({
+          instance_name: instanceName,
+          subdomain: subdomain,
+          token: token,
+          admin_token: adminToken || null,
+          status: 'disconnected',
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Sucesso",
+        description: "Credenciais salvas com sucesso!",
+      });
+
+      onSetupComplete(data.id);
+    } catch (error) {
+      console.error('Error saving credentials:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao salvar credenciais",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -61,13 +96,13 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
               <Label htmlFor="subdomain">Subdomínio UAZ</Label>
               <Input
                 id="subdomain"
-                placeholder="seu-subdominio"
+                placeholder="quantumtecnologia"
                 value={subdomain}
                 onChange={(e) => setSubdomain(e.target.value)}
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Exemplo: se sua URL é demo.uazapi.com, use "demo"
+                Exemplo: se sua URL é quantumtecnologia.uazapi.com, use "quantumtecnologia"
               </p>
             </div>
 
@@ -94,8 +129,8 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
               />
             </div>
 
-            <Button type="submit" className="w-full">
-              Conectar WhatsApp
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Salvando..." : "Conectar WhatsApp"}
             </Button>
           </form>
         </CardContent>
