@@ -51,10 +51,11 @@ serve(async (req) => {
 
     console.log('[UAZ Fetch Messages] Fetching from UAZ API for:', chat.wa_chat_id);
 
-    // Fetch messages from UAZ API
-    const messagesResponse = await fetch(`https://${credential.subdomain}.uazapi.com/messages/getByChatid`, {
+    // Fetch messages from UAZ API using POST /message/find
+    const messagesResponse = await fetch(`https://${credential.subdomain}.uazapi.com/message/find`, {
       method: 'POST',
       headers: {
+        'Accept': 'application/json',
         'Content-Type': 'application/json',
         'token': credential.token,
       },
