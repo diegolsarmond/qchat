@@ -65,7 +65,8 @@ const Login = () => {
     await performLogin({
       email,
       password,
-      signInWithPassword: supabase.auth.signInWithPassword,
+      signInWithPassword: (credentials) =>
+        supabase.auth.signInWithPassword(credentials),
       toast,
       navigate,
       setLoading,
