@@ -75,8 +75,10 @@ serve(async (req) => {
     let contentToStore = content;
     let typeToStore = messageType;
 
+    let finalMediaType: string | undefined;
+
     if (isMediaMessage) {
-      const finalMediaType = resolvedMediaType || mediaType;
+      finalMediaType = resolvedMediaType || mediaType;
       if (!finalMediaType) {
         return new Response(
           JSON.stringify({ error: 'Tipo de mídia é obrigatório' }),
@@ -148,6 +150,11 @@ serve(async (req) => {
         wa_message_id: messageData.Id || `msg_${timestamp}`,
         content: contentToStore,
         message_type: typeToStore,
+        media_type: isMediaMessage ? finalMediaType ?? null : null,
+        caption: isMediaMessage ? caption ?? null : null,
+        document_name: isMediaMessage ? documentName ?? null : null,
+        media_url: isMediaMessage ? mediaUrl ?? null : null,
+        media_base64: isMediaMessage ? mediaBase64 ?? null : null,
         from_me: true,
         status: 'sent',
         message_timestamp: timestamp,
