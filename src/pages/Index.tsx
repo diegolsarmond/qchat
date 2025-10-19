@@ -188,15 +188,28 @@ const Index = ({ user }: IndexProps) => {
       if (data?.messages) {
         const mapped = data.messages.map(mapApiMessage);
         setMessages(prev => mergeFetchedMessages(prev, mapped, Boolean(options.reset)));
-        setMessagePagination(prev => applyMessagePaginationUpdate(
-          options.reset ? createInitialMessagePagination(MESSAGE_PAGE_SIZE) : prev,
-          mapped.length,
-          {
-            reset: options.reset,
-            hasMore: Boolean(data.hasMore),
-            limit: MESSAGE_PAGE_SIZE,
-          }
-        ));
+        setMessagePagination(prev => {
+          const baseState = options.reset
+            ? createInitialMessagePagination(MESSAGE_PAGE_SIZE)
+            : prev;
+          const currentOffset = options.reset ? 0 : prev.offset;
+          const nextOffset = typeof data.nextOffset === 'number'
+            ? Math.max(0, data.nextOffset)
+            : currentOffset + mapped.length;
+          const receivedCount = options.reset
+            ? nextOffset
+            : nextOffset - currentOffset;
+
+          return applyMessagePaginationUpdate(
+            baseState,
+            Math.max(0, receivedCount),
+            {
+              reset: options.reset,
+              hasMore: Boolean(data.hasMore),
+              limit: MESSAGE_PAGE_SIZE,
+            }
+          );
+        });
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
