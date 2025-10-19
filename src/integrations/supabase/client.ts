@@ -2,34 +2,31 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-type EnvSource = {
-  VITE_SUPABASE_URL?: string;
-  VITE_SUPABASE_PUBLISHABLE_KEY?: string;
-};
-
-const resolveImportMetaEnv = (): EnvSource | undefined => {
+const importMetaEnv = (() => {
   try {
-    return new Function('return import.meta.env')();
+    return (Function('return typeof import.meta !== "undefined" ? import.meta.env : undefined;')() as Record<string, string | undefined> | undefined);
   } catch {
     return undefined;
   }
-};
+})();
 
-const envSource =
-  resolveImportMetaEnv() ||
-  ((typeof globalThis !== 'undefined' &&
-    (globalThis as typeof globalThis & { __VITE_ENV__?: EnvSource }).__VITE_ENV__) ||
-    (typeof process !== 'undefined' ? (process.env as EnvSource) : undefined));
+const processEnv = typeof process !== 'undefined' && process?.env
+  ? process.env as Record<string, string | undefined>
+  : undefined;
 
-const SUPABASE_URL = envSource?.VITE_SUPABASE_URL ?? 'http://localhost';
-const SUPABASE_PUBLISHABLE_KEY = envSource?.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'public-anon-key';
+const envSource = importMetaEnv ?? processEnv ?? {};
+
+const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? 'http://localhost';
+const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'test-key';
+
+const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storage: authStorage,
     persistSession: true,
     autoRefreshToken: true,
   }

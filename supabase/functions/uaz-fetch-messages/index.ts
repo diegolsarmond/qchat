@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveMessageStorage } from "../message-storage.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -93,13 +94,28 @@ serve(async (req) => {
     // Upsert messages to database
     for (const msg of messages) {
       try {
+        const storage = resolveMessageStorage({
+          content: msg.text || '',
+          messageType: msg.messageType || 'text',
+          mediaType: msg.mediaType || null,
+          caption: msg.caption || null,
+          documentName: msg.documentName || null,
+          mediaUrl: msg.mediaUrl || msg.url || null,
+          mediaBase64: msg.mediaBase64 || msg.base64 || null,
+        });
+
         await supabaseClient
           .from('messages')
           .upsert({
             chat_id: chatId,
             wa_message_id: msg.messageid,
-            content: msg.text || '',
-            message_type: msg.messageType || 'text',
+            content: storage.content,
+            message_type: storage.messageType,
+            media_type: storage.mediaType,
+            caption: storage.caption,
+            document_name: storage.documentName,
+            media_url: storage.mediaUrl,
+            media_base64: storage.mediaBase64,
             from_me: msg.fromMe || false,
             sender: msg.sender || '',
             sender_name: msg.senderName || '',
