@@ -4,20 +4,33 @@ import type { Database } from './types';
 
 type EnvSource = Record<string, string | undefined>;
 
-const loadImportMetaEnv = (): EnvSource | undefined => {
-  try {
-    const meta = new Function('return import.meta')() as ImportMeta & { env?: EnvSource };
-    return meta?.env;
-  } catch {
-    return undefined;
+declare const __SUPABASE_ENV__:
+  | (EnvSource & {
+      VITE_SUPABASE_URL?: string;
+      VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+    })
+  | undefined;
+
+const loadBundlerEnv = (): EnvSource | undefined => {
+  if (typeof __SUPABASE_ENV__ !== 'undefined' && __SUPABASE_ENV__ !== null) {
+    return __SUPABASE_ENV__;
   }
+
+  if (typeof globalThis !== 'undefined' && '__SUPABASE_ENV__' in globalThis) {
+    const globalEnv = (globalThis as typeof globalThis & { __SUPABASE_ENV__?: EnvSource }).__SUPABASE_ENV__;
+    if (globalEnv) {
+      return globalEnv;
+    }
+  }
+
+  return undefined;
 };
 
 const processEnv = typeof process !== 'undefined'
   ? ((process.env ?? {}) as EnvSource)
   : undefined;
 
-const envSource: EnvSource = loadImportMetaEnv() ?? processEnv ?? {};
+const envSource: EnvSource = loadBundlerEnv() ?? processEnv ?? {};
 
 const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? 'http://localhost:54321';
 const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'test-key';
