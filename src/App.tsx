@@ -61,7 +61,6 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -73,5 +72,7 @@ const App = () => (
     </TooltipProvider>
   </QueryClientProvider>
 );
+
+export { ProtectedRoute };
 
 export default App;
