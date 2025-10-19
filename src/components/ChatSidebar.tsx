@@ -13,6 +13,8 @@ interface ChatSidebarProps {
   selectedChat: Chat | null;
   onSelectChat: (chat: Chat) => void;
   onAssignChat: (chatId: string) => void;
+  showSidebar: boolean;
+  onToggleSidebar: () => void;
 }
 
 export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat }: ChatSidebarProps) => {
@@ -27,7 +29,10 @@ export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat }:
   };
 
   return (
-    <div className="w-full md:w-96 bg-[hsl(var(--whatsapp-sidebar))] border-r border-[hsl(var(--whatsapp-border))] flex flex-col h-screen">
+    <div
+      data-testid="chat-sidebar"
+      className={`w-full md:w-96 bg-[hsl(var(--whatsapp-sidebar))] border-r border-[hsl(var(--whatsapp-border))] flex-col h-screen ${showSidebar ? 'flex' : 'hidden'} md:flex`}
+    >
       {/* Header */}
       <div className="bg-[hsl(var(--whatsapp-header))] p-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
