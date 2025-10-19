@@ -6,7 +6,8 @@ import { ChatArea } from "@/components/ChatArea";
 import { AssignChatDialog } from "@/components/AssignChatDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Chat, Message, User } from "@/types/whatsapp";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { Chat, Message, User as WhatsAppUser } from "@/types/whatsapp";
 import {
   applyMessagePaginationUpdate,
   createInitialMessagePagination,
@@ -26,13 +27,17 @@ const mapApiMessage = (m: any): Message => ({
   status: m.status,
 });
 
-const Index = () => {
+type IndexProps = {
+  user: SupabaseUser;
+};
+
+const Index = ({ user }: IndexProps) => {
   const [credentialId, setCredentialId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<WhatsAppUser[]>([]);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [chatToAssign, setChatToAssign] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -46,6 +51,8 @@ const Index = () => {
 
   // Fetch users on mount
   useEffect(() => {
+    if (!user) return;
+
     const fetchUsers = async () => {
       const { data } = await supabase.from('users').select('*');
       if (data) {
@@ -58,7 +65,7 @@ const Index = () => {
       }
     };
     fetchUsers();
-  }, []);
+  }, [user]);
 
   // Fetch chats when connected and setup realtime
   useEffect(() => {
