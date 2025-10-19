@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { credentialId } = await req.json();
+    const { credentialId, limit = 50, offset = 0 } = await req.json();
     
     console.log('[UAZ Fetch Chats] Fetching chats for credential:', credentialId);
 
@@ -48,8 +48,8 @@ serve(async (req) => {
       body: JSON.stringify({
         operator: 'AND',
         sort: '-wa_lastMsgTimestamp',
-        limit: 100,
-        offset: 0
+        limit: limit,
+        offset: offset
       })
     });
 
@@ -89,19 +89,24 @@ serve(async (req) => {
       }
     }
 
-    // Fetch updated chats from database
-    const { data: dbChats, error: dbError } = await supabaseClient
+    // Fetch updated chats from database with pagination
+    const { data: dbChats, error: dbError, count } = await supabaseClient
       .from('chats')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('credential_id', credentialId)
-      .order('last_message_timestamp', { ascending: false });
+      .order('last_message_timestamp', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (dbError) {
       console.error('[UAZ Fetch Chats] Failed to fetch from DB:', dbError);
     }
 
     return new Response(
-      JSON.stringify({ chats: dbChats || [] }),
+      JSON.stringify({ 
+        chats: dbChats || [],
+        total: count || 0,
+        hasMore: (count || 0) > (offset + limit)
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

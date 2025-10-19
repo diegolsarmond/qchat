@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { credentialId, chatId } = await req.json();
+    const { credentialId, chatId, limit = 50, offset = 0 } = await req.json();
     
     console.log('[UAZ Fetch Messages] Fetching messages for chat:', chatId);
 
@@ -61,7 +61,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         chatid: chat.wa_chat_id,
-        limit: 100,
+        limit: limit,
       }),
     });
 
@@ -102,19 +102,24 @@ serve(async (req) => {
       }
     }
 
-    // Fetch updated messages from database
-    const { data: dbMessages, error: dbError } = await supabaseClient
+    // Fetch updated messages from database with pagination
+    const { data: dbMessages, error: dbError, count } = await supabaseClient
       .from('messages')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('chat_id', chatId)
-      .order('message_timestamp', { ascending: true });
+      .order('message_timestamp', { ascending: true })
+      .range(offset, offset + limit - 1);
 
     if (dbError) {
       console.error('[UAZ Fetch Messages] Failed to fetch from DB:', dbError);
     }
 
     return new Response(
-      JSON.stringify({ messages: dbMessages || [] }),
+      JSON.stringify({ 
+        messages: dbMessages || [],
+        total: count || 0,
+        hasMore: (count || 0) > (offset + limit)
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

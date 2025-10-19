@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,12 @@ interface ChatAreaProps {
 
 export const ChatArea = ({ chat, messages, onSendMessage, onAssignChat }: ChatAreaProps) => {
   const [messageText, setMessageText] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll para última mensagem
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const handleSend = () => {
     if (messageText.trim()) {
@@ -163,8 +169,9 @@ export const ChatArea = ({ chat, messages, onSendMessage, onAssignChat }: ChatAr
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
       </ScrollArea>
 
       {/* Input Area */}
