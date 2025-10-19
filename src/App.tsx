@@ -9,8 +9,8 @@ import { supabase } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
-import Register from "./pages/Register";
 import Admin from "./pages/Admin";
+import Register from "./pages/Register";
 
 type ProtectedRouteProps = {
   element: ReactElement;
@@ -61,7 +61,6 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -73,5 +72,7 @@ const App = () => (
     </TooltipProvider>
   </QueryClientProvider>
 );
+
+export { ProtectedRoute };
 
 export default App;

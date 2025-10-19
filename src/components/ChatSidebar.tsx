@@ -7,6 +7,7 @@ import { Chat } from "@/types/whatsapp";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ChatSidebarProps {
   chats: Chat[];
@@ -35,6 +36,11 @@ export const ChatSidebar = ({
       .slice(0, 2);
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/login");
+  };
+
   return (
     <div
       data-testid="chat-sidebar"
@@ -57,6 +63,14 @@ export const ChatSidebar = ({
             data-testid="admin-nav-button"
           >
             Admin
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-3 text-sm text-primary-foreground hover:bg-white/10"
+            onClick={handleSignOut}
+          >
+            Sair
           </Button>
           <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-white/10">
             <Users className="w-5 h-5" />
