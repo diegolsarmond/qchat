@@ -14,7 +14,185 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      chats: {
+        Row: {
+          assigned_to: string | null
+          avatar: string | null
+          created_at: string
+          credential_id: string
+          id: string
+          is_group: boolean | null
+          last_message: string | null
+          last_message_timestamp: number | null
+          name: string
+          unread_count: number | null
+          updated_at: string
+          wa_chat_id: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          avatar?: string | null
+          created_at?: string
+          credential_id: string
+          id?: string
+          is_group?: boolean | null
+          last_message?: string | null
+          last_message_timestamp?: number | null
+          name: string
+          unread_count?: number | null
+          updated_at?: string
+          wa_chat_id: string
+        }
+        Update: {
+          assigned_to?: string | null
+          avatar?: string | null
+          created_at?: string
+          credential_id?: string
+          id?: string
+          is_group?: boolean | null
+          last_message?: string | null
+          last_message_timestamp?: number | null
+          name?: string
+          unread_count?: number | null
+          updated_at?: string
+          wa_chat_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chats_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chats_credential_id_fkey"
+            columns: ["credential_id"]
+            isOneToOne: false
+            referencedRelation: "credentials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credentials: {
+        Row: {
+          admin_token: string | null
+          created_at: string
+          id: string
+          instance_name: string
+          phone_number: string | null
+          profile_name: string | null
+          qr_code: string | null
+          status: string
+          subdomain: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          admin_token?: string | null
+          created_at?: string
+          id?: string
+          instance_name: string
+          phone_number?: string | null
+          profile_name?: string | null
+          qr_code?: string | null
+          status?: string
+          subdomain: string
+          token: string
+          updated_at?: string
+        }
+        Update: {
+          admin_token?: string | null
+          created_at?: string
+          id?: string
+          instance_name?: string
+          phone_number?: string | null
+          profile_name?: string | null
+          qr_code?: string | null
+          status?: string
+          subdomain?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          chat_id: string
+          content: string | null
+          created_at: string
+          from_me: boolean | null
+          id: string
+          message_timestamp: number
+          message_type: string
+          sender: string | null
+          sender_name: string | null
+          status: string | null
+          wa_message_id: string
+        }
+        Insert: {
+          chat_id: string
+          content?: string | null
+          created_at?: string
+          from_me?: boolean | null
+          id?: string
+          message_timestamp: number
+          message_type?: string
+          sender?: string | null
+          sender_name?: string | null
+          status?: string | null
+          wa_message_id: string
+        }
+        Update: {
+          chat_id?: string
+          content?: string | null
+          created_at?: string
+          from_me?: boolean | null
+          id?: string
+          message_timestamp?: number
+          message_type?: string
+          sender?: string | null
+          sender_name?: string | null
+          status?: string | null
+          wa_message_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          avatar: string | null
+          created_at: string
+          email: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          avatar?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          avatar?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
