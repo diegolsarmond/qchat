@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveMessageStorage } from "../message-storage.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -64,8 +65,17 @@ serve(async (req) => {
 
     console.log('[UAZ Send Message] Sending to number:', phoneNumber);
 
-    const resolvedMediaType = mediaType || (messageType !== 'text' && messageType !== 'media' ? messageType : undefined);
-    const isMediaMessage = messageType === 'media' || !!resolvedMediaType || !!mediaUrl || !!mediaBase64;
+    const storage = resolveMessageStorage({
+      content,
+      messageType,
+      mediaType,
+      caption,
+      documentName,
+      mediaUrl,
+      mediaBase64,
+    });
+
+    const isMediaMessage = storage.messageType === 'media';
 
     let apiPath = 'text';
     let apiBody: Record<string, unknown> = {
@@ -76,7 +86,7 @@ serve(async (req) => {
     let typeToStore = messageType;
 
     if (isMediaMessage) {
-      const finalMediaType = resolvedMediaType || mediaType;
+      finalMediaType = resolvedMediaType || mediaType;
       if (!finalMediaType) {
         return new Response(
           JSON.stringify({ error: 'Tipo de mídia é obrigatório' }),
@@ -97,6 +107,11 @@ serve(async (req) => {
         type: finalMediaType,
       };
 
+      mediaUrlToStore = mediaUrl ?? null;
+      mediaBase64ToStore = mediaBase64 ?? null;
+      documentNameToStore = documentName ?? null;
+      captionToStore = caption ?? null;
+
       if (mediaUrl) {
         apiBody.url = mediaUrl;
       }
@@ -114,7 +129,7 @@ serve(async (req) => {
       }
 
       contentToStore = caption || content || `[${finalMediaType}]`;
-      typeToStore = finalMediaType;
+      typeToStore = 'media';
     }
 
     const messageResponse = await fetch(`https://${credential.subdomain}.uazapi.com/send/${apiPath}`, {
@@ -161,7 +176,7 @@ serve(async (req) => {
     await supabaseClient
         .from('chats')
         .update({
-        last_message: contentToStore,
+        last_message: storage.content,
         last_message_timestamp: timestamp,
       })
       .eq('id', chatId);

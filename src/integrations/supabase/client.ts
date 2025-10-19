@@ -2,10 +2,9 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-type EnvSource = {
-  VITE_SUPABASE_URL?: string;
-  VITE_SUPABASE_PUBLISHABLE_KEY?: string;
-};
+const importMetaEnv = typeof import.meta !== 'undefined'
+  ? ((import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? undefined)
+  : undefined;
 
 const resolveImportMetaEnv = (): EnvSource | undefined => {
   try {
@@ -15,21 +14,17 @@ const resolveImportMetaEnv = (): EnvSource | undefined => {
   }
 };
 
-const envSource =
-  resolveImportMetaEnv() ||
-  ((typeof globalThis !== 'undefined' &&
-    (globalThis as typeof globalThis & { __VITE_ENV__?: EnvSource }).__VITE_ENV__) ||
-    (typeof process !== 'undefined' ? (process.env as EnvSource) : undefined));
+const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? 'http://localhost:54321';
+const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'test-key';
 
-const SUPABASE_URL = envSource?.VITE_SUPABASE_URL ?? 'http://localhost';
-const SUPABASE_PUBLISHABLE_KEY = envSource?.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'public-anon-key';
+const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storage: authStorage,
     persistSession: true,
     autoRefreshToken: true,
   }
