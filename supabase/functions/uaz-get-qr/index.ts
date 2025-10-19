@@ -61,20 +61,20 @@ serve(async (req) => {
 
     // Update credential in database
     const updateData: any = {
-      status: instanceData.status || 'disconnected',
+      status: instanceData.instance?.status || 'disconnected',
       updated_at: new Date().toISOString(),
     };
 
-    if (instanceData.qrcode) {
-      updateData.qr_code = instanceData.qrcode;
+    if (instanceData.instance?.qrcode) {
+      updateData.qr_code = instanceData.instance.qrcode;
     }
 
-    if (instanceData.profileName) {
-      updateData.profile_name = instanceData.profileName;
+    if (instanceData.instance?.profileName) {
+      updateData.profile_name = instanceData.instance.profileName;
     }
 
-    if (instanceData.phoneNumber) {
-      updateData.phone_number = instanceData.phoneNumber;
+    if (instanceData.instance?.owner) {
+      updateData.phone_number = instanceData.instance.owner;
     }
 
     const { error: updateError } = await supabaseClient
@@ -88,12 +88,12 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        status: instanceData.status || 'disconnected',
-        qrCode: instanceData.qrcode,
-        profileName: instanceData.profileName,
-        phoneNumber: instanceData.phoneNumber,
-        connected: instanceData.status === 'connected',
-        pairingCode: instanceData.pairingCode,
+        status: instanceData.instance?.status || 'disconnected',
+        qrCode: instanceData.instance?.qrcode,
+        profileName: instanceData.instance?.profileName,
+        phoneNumber: instanceData.instance?.owner,
+        connected: instanceData.status?.connected || false,
+        pairingCode: instanceData.instance?.paircode,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
