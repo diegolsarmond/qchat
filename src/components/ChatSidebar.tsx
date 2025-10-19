@@ -17,7 +17,14 @@ interface ChatSidebarProps {
   onToggleSidebar: () => void;
 }
 
-export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat, showSidebar }: ChatSidebarProps) => {
+export const ChatSidebar = ({
+  chats,
+  selectedChat,
+  onSelectChat,
+  onAssignChat,
+  showSidebar,
+  onToggleSidebar,
+}: ChatSidebarProps) => {
   const navigate = useNavigate();
   const getInitials = (name: string) => {
     return name
@@ -88,7 +95,10 @@ export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat, s
         {chats.map((chat) => (
           <div
             key={chat.id}
-            onClick={() => onSelectChat(chat)}
+            onClick={() => {
+              onToggleSidebar();
+              onSelectChat(chat);
+            }}
             className={`
               flex items-center gap-3 p-3 cursor-pointer transition-colors
               hover:bg-[hsl(var(--whatsapp-hover))]

@@ -224,11 +224,12 @@ const Index = ({ user }: IndexProps) => {
 
   const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
-    await fetchMessages(chat.id, { reset: true });
 
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setShowSidebar(false);
     }
+
+    await fetchMessages(chat.id, { reset: true });
     
     // Fetch and update contact details
     if (credentialId) {
