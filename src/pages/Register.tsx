@@ -51,13 +51,20 @@ export const performRegister = async ({
     navigate("/login");
     return true;
   } catch (unknownError) {
-    const message =
+    const isNetworkError =
       typeof unknownError === "object" &&
       unknownError !== null &&
-      "message" in unknownError &&
-      typeof (unknownError as { message?: unknown }).message === "string"
-        ? (unknownError as { message: string }).message
-        : "Erro inesperado";
+      "name" in unknownError &&
+      unknownError.name === "TypeError";
+    const message =
+      isNetworkError
+        ? "Não foi possível conectar ao servidor de autenticação"
+        : typeof unknownError === "object" &&
+            unknownError !== null &&
+            "message" in unknownError &&
+            typeof (unknownError as { message?: unknown }).message === "string"
+          ? (unknownError as { message: string }).message
+          : "Erro inesperado";
     toast({
       title: "Erro ao cadastrar",
       description: message,
