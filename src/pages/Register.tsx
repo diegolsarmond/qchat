@@ -65,7 +65,7 @@ const Register = () => {
     await performRegister({
       email,
       password,
-      signUp: supabase.auth.signUp,
+      signUp: supabase.auth.signUp.bind(supabase.auth),
       toast,
       navigate,
       setLoading,
