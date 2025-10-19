@@ -7,28 +7,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
-type SignInWithPassword = typeof supabase.auth.signInWithPassword;
+type SignUp = typeof supabase.auth.signUp;
 
-type PerformLoginParams = {
+type PerformRegisterParams = {
   email: string;
   password: string;
-  signInWithPassword: SignInWithPassword;
+  signUp: SignUp;
   toast: (options: { title: string; description: string; variant?: string }) => void;
   navigate: (path: string) => void;
   setLoading: (loading: boolean) => void;
 };
 
-export const performLogin = async ({
+export const performRegister = async ({
   email,
   password,
-  signInWithPassword,
+  signUp,
   toast,
   navigate,
   setLoading,
-}: PerformLoginParams) => {
+}: PerformRegisterParams) => {
   setLoading(true);
 
-  const { error } = await signInWithPassword({
+  const { error } = await signUp({
     email,
     password,
   });
@@ -37,7 +37,7 @@ export const performLogin = async ({
 
   if (error) {
     toast({
-      title: "Erro ao entrar",
+      title: "Erro ao cadastrar",
       description: error.message,
       variant: "destructive",
     });
@@ -45,15 +45,15 @@ export const performLogin = async ({
   }
 
   toast({
-    title: "Bem-vindo",
-    description: "Login realizado com sucesso",
+    title: "Conta criada",
+    description: "Cadastro realizado com sucesso",
   });
 
-  navigate("/");
+  navigate("/login");
   return true;
 };
 
-const Login = () => {
+const Register = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -62,10 +62,10 @@ const Login = () => {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    await performLogin({
+    await performRegister({
       email,
       password,
-      signInWithPassword: supabase.auth.signInWithPassword,
+      signUp: supabase.auth.signUp,
       toast,
       navigate,
       setLoading,
@@ -76,7 +76,7 @@ const Login = () => {
     <div className="flex min-h-screen items-center justify-center bg-muted/20 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-center text-2xl font-semibold">Acessar conta</CardTitle>
+          <CardTitle className="text-center text-2xl font-semibold">Criar conta</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
@@ -96,19 +96,19 @@ const Login = () => {
               <Input
                 id="password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete="new-password"
                 required
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
             </div>
             <Button className="w-full" disabled={loading} type="submit">
-              {loading ? "Entrando..." : "Entrar"}
+              {loading ? "Cadastrando..." : "Cadastrar"}
             </Button>
           </form>
           <div className="mt-4 text-center text-sm">
-            <Link className="text-primary underline" to="/register">
-              Criar nova conta
+            <Link className="text-primary underline" to="/login">
+              Já possui uma conta? Entrar
             </Link>
           </div>
         </CardContent>
@@ -117,4 +117,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default Register;
