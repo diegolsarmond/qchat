@@ -90,6 +90,8 @@ serve(async (req) => {
     let mediaUrlToStore: string | null = null;
     let mediaBase64ToStore: string | null = null;
 
+    let finalMediaType: string | undefined;
+
     if (isMediaMessage) {
       finalMediaType = resolvedMediaType || mediaType;
       if (!finalMediaType) {
@@ -165,11 +167,11 @@ serve(async (req) => {
         wa_message_id: messageData.Id || `msg_${timestamp}`,
         content: contentToStore,
         message_type: typeToStore,
-        media_type: finalMediaType ?? null,
-        media_url: mediaUrlToStore,
-        media_base64: mediaBase64ToStore,
-        caption: captionToStore,
-        document_name: documentNameToStore,
+        media_type: isMediaMessage ? finalMediaType ?? null : null,
+        caption: isMediaMessage ? caption ?? null : null,
+        document_name: isMediaMessage ? documentName ?? null : null,
+        media_url: isMediaMessage ? mediaUrl ?? null : null,
+        media_base64: isMediaMessage ? mediaBase64 ?? null : null,
         from_me: true,
         status: 'sent',
         message_timestamp: timestamp,
