@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, QrCode } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,8 +16,16 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
   const [status, setStatus] = useState<string>("Conectando ao WhatsApp...");
   const [instanceName, setInstanceName] = useState<string>("");
   const { toast } = useToast();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isFetchingRef = useRef(false);
 
   const fetchQRCode = async () => {
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    isFetchingRef.current = true;
+
     try {
       setStatus("Verificando status da conexão...");
 
@@ -37,6 +45,10 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
           title: "Conectado",
           description: `WhatsApp já conectado: ${data.phoneNumber || 'número detectado'}`,
         });
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
         setTimeout(() => onConnected(), 500);
         return;
       }
@@ -53,8 +65,6 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
       if (data.status === 'connecting' || data.status === 'disconnected') {
         setLoading(true);
         setStatus("Gerando QR Code...");
-        // Retry after 2 seconds
-        setTimeout(fetchQRCode, 2000);
         return;
       }
 
@@ -71,6 +81,9 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
         description: "Falha ao verificar status da conexão",
         variant: "destructive",
       });
+    }
+    finally {
+      isFetchingRef.current = false;
     }
   };
 
@@ -95,19 +108,16 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
 
     // Poll for connection status apenas se não estiver conectado
     // Verifica a cada 3 segundos
-    const interval = setInterval(() => {
-      setQrCode((current) => {
-        if (!current) {
-          fetchQRCode();
-          return current;
-        }
-
-        clearInterval(interval);
-        return current;
-      });
+    intervalRef.current = setInterval(() => {
+      fetchQRCode();
     }, 3000);
 
-    return () => clearInterval(interval);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
   }, [credentialId]);
 
   return (
