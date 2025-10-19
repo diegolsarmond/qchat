@@ -96,9 +96,15 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
     // Poll for connection status apenas se não estiver conectado
     // Verifica a cada 3 segundos
     const interval = setInterval(() => {
-      if (!qrCode) {
-        fetchQRCode();
-      }
+      setQrCode((current) => {
+        if (!current) {
+          fetchQRCode();
+          return current;
+        }
+
+        clearInterval(interval);
+        return current;
+      });
     }, 3000);
 
     return () => clearInterval(interval);
