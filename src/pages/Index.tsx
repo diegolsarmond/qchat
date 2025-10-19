@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { Chat, Message, User as WhatsAppUser } from "@/types/whatsapp";
+import { mergeFetchedMessages } from "@/lib/message-order";
 import {
   applyMessagePaginationUpdate,
   createInitialMessagePagination,
@@ -186,7 +187,7 @@ const Index = ({ user }: IndexProps) => {
 
       if (data?.messages) {
         const mapped = data.messages.map(mapApiMessage);
-        setMessages(prev => options.reset ? mapped : [...mapped, ...prev]);
+        setMessages(prev => mergeFetchedMessages(prev, mapped, Boolean(options.reset)));
         setMessagePagination(prev => applyMessagePaginationUpdate(
           options.reset ? createInitialMessagePagination(MESSAGE_PAGE_SIZE) : prev,
           mapped.length,
