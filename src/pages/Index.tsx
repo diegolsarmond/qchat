@@ -7,6 +7,24 @@ import { AssignChatDialog } from "@/components/AssignChatDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Chat, Message, User } from "@/types/whatsapp";
+import {
+  applyMessagePaginationUpdate,
+  createInitialMessagePagination,
+} from "@/lib/message-pagination";
+
+const MESSAGE_PAGE_SIZE = 50;
+
+const formatTimestamp = (value: number | string | null | undefined) =>
+  new Date(value ?? Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+const mapApiMessage = (m: any): Message => ({
+  id: m.id,
+  chatId: m.chat_id,
+  content: m.content || "",
+  timestamp: formatTimestamp(m.message_timestamp),
+  from: m.from_me ? "me" : "them",
+  status: m.status,
+});
 
 const Index = () => {
   const [credentialId, setCredentialId] = useState<string | null>(null);
@@ -18,6 +36,11 @@ const Index = () => {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [chatToAssign, setChatToAssign] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [messagePagination, setMessagePagination] = useState(() =>
+    createInitialMessagePagination(MESSAGE_PAGE_SIZE)
+  );
+  const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
+  const [isPrependingMessages, setIsPrependingMessages] = useState(false);
   const { toast } = useToast();
 
   // Fetch users on mount
@@ -71,16 +94,12 @@ const Index = () => {
           (payload) => {
             console.log('New message:', payload);
             if (selectedChat && payload.new.chat_id === selectedChat.id) {
-              // Add new message to current chat
               const newMsg = payload.new as any;
-              setMessages(prev => [...prev, {
-                id: newMsg.id,
-                chatId: newMsg.chat_id,
-                content: newMsg.content || '',
-                timestamp: new Date(newMsg.message_timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-                from: newMsg.from_me ? 'me' : 'them',
-                status: newMsg.status,
-              }]);
+              setMessages(prev => [...prev, mapApiMessage(newMsg)]);
+              setMessagePagination(prev => ({
+                ...prev,
+                offset: prev.offset + 1,
+              }));
             }
           }
         )
@@ -130,25 +149,45 @@ const Index = () => {
     }
   };
 
-  const fetchMessages = async (chatId: string) => {
+  const fetchMessages = async (chatId: string, options: { reset?: boolean } = { reset: false }) => {
     if (!credentialId) return;
+
+    if (!options.reset && isLoadingMoreMessages) {
+      return;
+    }
+
+    if (options.reset) {
+      setMessagePagination(createInitialMessagePagination(MESSAGE_PAGE_SIZE));
+    }
+
+    setIsLoadingMoreMessages(true);
+    setIsPrependingMessages(!options.reset);
 
     try {
       const { data, error } = await supabase.functions.invoke('uaz-fetch-messages', {
-        body: { credentialId, chatId }
+        body: {
+          credentialId,
+          chatId,
+          limit: MESSAGE_PAGE_SIZE,
+          offset: options.reset ? 0 : messagePagination.offset,
+          order: 'desc',
+        }
       });
 
       if (error) throw error;
 
       if (data?.messages) {
-        setMessages(data.messages.map((m: any) => ({
-          id: m.id,
-          chatId: m.chat_id,
-          content: m.content || '',
-          timestamp: new Date(m.message_timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          from: m.from_me ? 'me' : 'them',
-          status: m.status,
-        })));
+        const mapped = data.messages.map(mapApiMessage);
+        setMessages(prev => options.reset ? mapped : [...mapped, ...prev]);
+        setMessagePagination(prev => applyMessagePaginationUpdate(
+          options.reset ? createInitialMessagePagination(MESSAGE_PAGE_SIZE) : prev,
+          mapped.length,
+          {
+            reset: options.reset,
+            hasMore: Boolean(data.hasMore),
+            limit: MESSAGE_PAGE_SIZE,
+          }
+        ));
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -157,6 +196,9 @@ const Index = () => {
         description: "Falha ao carregar mensagens",
         variant: "destructive",
       });
+    } finally {
+      setIsLoadingMoreMessages(false);
+      setIsPrependingMessages(false);
     }
   };
 
@@ -174,7 +216,7 @@ const Index = () => {
 
   const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
-    fetchMessages(chat.id);
+    await fetchMessages(chat.id, { reset: true });
     
     // Fetch and update contact details
     if (credentialId) {
@@ -212,7 +254,6 @@ const Index = () => {
 
       if (error) throw error;
 
-      // Add message to local state
       const newMessage: Message = {
         id: data.messageId,
         chatId: selectedChat.id,
@@ -222,7 +263,11 @@ const Index = () => {
         status: 'sent',
       };
 
-      setMessages([...messages, newMessage]);
+      setMessages(prev => [...prev, newMessage]);
+      setMessagePagination(prev => ({
+        ...prev,
+        offset: prev.offset + 1,
+      }));
 
       // Update chat last message
       setChats(chats.map(c => 
@@ -283,6 +328,13 @@ const Index = () => {
 
   const currentChatMessages = messages.filter(m => m.chatId === selectedChat?.id);
 
+  const handleLoadMoreMessages = () => {
+    if (!selectedChat || !messagePagination.hasMore || isLoadingMoreMessages) {
+      return;
+    }
+    fetchMessages(selectedChat.id);
+  };
+
   // Setup flow
   if (!credentialId) {
     return <CredentialSetup onSetupComplete={handleSetupComplete} />;
@@ -302,11 +354,15 @@ const Index = () => {
           onSelectChat={handleSelectChat}
           onAssignChat={handleAssignChat}
         />
-        <ChatArea 
+        <ChatArea
           chat={selectedChat}
           messages={currentChatMessages}
           onSendMessage={handleSendMessage}
           onAssignChat={handleAssignChat}
+          onLoadMoreMessages={handleLoadMoreMessages}
+          hasMoreMessages={messagePagination.hasMore}
+          isLoadingMoreMessages={isLoadingMoreMessages}
+          isPrependingMessages={isPrependingMessages}
         />
       </div>
 

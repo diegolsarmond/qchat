@@ -28,16 +28,30 @@ interface ChatAreaProps {
   messages: Message[];
   onSendMessage: (content: string) => void;
   onAssignChat: (chatId: string) => void;
+  onLoadMoreMessages?: () => void;
+  hasMoreMessages?: boolean;
+  isLoadingMoreMessages?: boolean;
+  isPrependingMessages?: boolean;
 }
 
-export const ChatArea = ({ chat, messages, onSendMessage, onAssignChat }: ChatAreaProps) => {
+export const ChatArea = ({
+  chat,
+  messages,
+  onSendMessage,
+  onAssignChat,
+  onLoadMoreMessages,
+  hasMoreMessages = false,
+  isLoadingMoreMessages = false,
+  isPrependingMessages = false,
+}: ChatAreaProps) => {
   const [messageText, setMessageText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll para última mensagem
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (!isPrependingMessages) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isPrependingMessages]);
 
   const handleSend = () => {
     if (messageText.trim()) {
@@ -141,11 +155,22 @@ export const ChatArea = ({ chat, messages, onSendMessage, onAssignChat }: ChatAr
         </div>
       </div>
 
-      {/* Messages Area */}
       <ScrollArea className="flex-1 p-4" style={{
         backgroundImage: `url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 10h1v1h-1z' fill='%23000000' fill-opacity='0.02'/%3E%3C/svg%3E")`,
       }}>
         <div className="space-y-3 max-w-4xl mx-auto">
+          {hasMoreMessages && onLoadMoreMessages && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onLoadMoreMessages}
+                disabled={isLoadingMoreMessages}
+              >
+                {isLoadingMoreMessages ? "Carregando..." : "Carregar mensagens anteriores"}
+              </Button>
+            </div>
+          )}
           {messages.map((message) => (
             <div
               key={message.id}
