@@ -17,6 +17,21 @@ serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");
+    const accessToken = typeof authHeader === "string" && authHeader.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7).trim()
+      : null;
+
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({ error: "Credenciais ausentes" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
     const payload = (await req.json()) as AdminCreateUserPayload;
     const email = typeof payload.email === "string" ? payload.email : null;
     const password = typeof payload.password === "string" ? payload.password : null;
@@ -46,6 +61,38 @@ serve(async (req) => {
     }
 
     const supabaseClient = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+
+    if (authError || !authData?.user) {
+      console.error("[Admin Create User] Failed to authenticate request", authError?.message);
+      return new Response(
+        JSON.stringify({ error: "Credenciais inválidas" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const appMetadata =
+      (authData.user as { app_metadata?: Record<string, unknown> | undefined })?.app_metadata ?? {};
+    const appRole = appMetadata.role as string | undefined;
+    const appRoles = Array.isArray((appMetadata as { roles?: unknown }).roles)
+      ? ((appMetadata as { roles?: string[] }).roles ?? [])
+      : [];
+    const isAdmin =
+      appRole === "admin" || appRoles.includes("admin") || appMetadata.is_admin === true;
+
+    if (!isAdmin) {
+      return new Response(
+        JSON.stringify({ error: "Acesso não autorizado" }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
 
     const { data, error } = await supabaseClient.auth.admin.createUser({
       email,
