@@ -41,6 +41,7 @@ const Index = ({ user }: IndexProps) => {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [chatToAssign, setChatToAssign] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
   const [messagePagination, setMessagePagination] = useState(() =>
     createInitialMessagePagination(MESSAGE_PAGE_SIZE)
   );
@@ -224,6 +225,10 @@ const Index = ({ user }: IndexProps) => {
   const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
     await fetchMessages(chat.id, { reset: true });
+
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setShowSidebar(false);
+    }
     
     // Fetch and update contact details
     if (credentialId) {
@@ -354,12 +359,14 @@ const Index = ({ user }: IndexProps) => {
   // Main WhatsApp interface
   return (
     <>
-      <div className="flex h-screen overflow-hidden">
-        <ChatSidebar 
+      <div className="flex h-screen overflow-hidden flex-col md:flex-row">
+        <ChatSidebar
           chats={chats}
           selectedChat={selectedChat}
           onSelectChat={handleSelectChat}
           onAssignChat={handleAssignChat}
+          showSidebar={showSidebar}
+          onToggleSidebar={() => setShowSidebar(false)}
         />
         <ChatArea
           chat={selectedChat}
@@ -370,6 +377,8 @@ const Index = ({ user }: IndexProps) => {
           hasMoreMessages={messagePagination.hasMore}
           isLoadingMoreMessages={isLoadingMoreMessages}
           isPrependingMessages={isPrependingMessages}
+          showSidebar={showSidebar}
+          onShowSidebar={() => setShowSidebar(true)}
         />
       </div>
 
