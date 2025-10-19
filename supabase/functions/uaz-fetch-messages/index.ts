@@ -12,7 +12,13 @@ serve(async (req) => {
   }
 
   try {
-    const { credentialId, chatId, limit = 50, offset = 0 } = await req.json();
+    const {
+      credentialId,
+      chatId,
+      limit = 50,
+      offset = 0,
+      order = 'asc',
+    } = await req.json();
     
     console.log('[UAZ Fetch Messages] Fetching messages for chat:', chatId);
 
@@ -107,16 +113,20 @@ serve(async (req) => {
       .from('messages')
       .select('*', { count: 'exact' })
       .eq('chat_id', chatId)
-      .order('message_timestamp', { ascending: true })
+      .order('message_timestamp', { ascending: order !== 'desc' })
       .range(offset, offset + limit - 1);
 
     if (dbError) {
       console.error('[UAZ Fetch Messages] Failed to fetch from DB:', dbError);
     }
 
+    const normalizedMessages = order === 'desc'
+      ? (dbMessages || []).slice().reverse()
+      : (dbMessages || []);
+
     return new Response(
-      JSON.stringify({ 
-        messages: dbMessages || [],
+      JSON.stringify({
+        messages: normalizedMessages,
         total: count || 0,
         hasMore: (count || 0) > (offset + limit)
       }),
