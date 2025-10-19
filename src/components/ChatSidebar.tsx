@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Chat } from "@/types/whatsapp";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useNavigate } from "react-router-dom";
 
 interface ChatSidebarProps {
   chats: Chat[];
@@ -15,6 +16,7 @@ interface ChatSidebarProps {
 }
 
 export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat }: ChatSidebarProps) => {
+  const navigate = useNavigate();
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -34,7 +36,16 @@ export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat }:
           </Avatar>
           <h1 className="text-lg font-semibold text-primary-foreground">WhatsApp</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-3 text-sm text-primary-foreground hover:bg-white/10"
+            onClick={() => navigate("/admin")}
+            data-testid="admin-nav-button"
+          >
+            Admin
+          </Button>
           <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-white/10">
             <Users className="w-5 h-5" />
           </Button>
