@@ -6,11 +6,13 @@ const importMetaEnv = typeof import.meta !== 'undefined'
   ? ((import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? undefined)
   : undefined;
 
-const processEnv = typeof process !== 'undefined' && process?.env
-  ? (process.env as Record<string, string | undefined>)
-  : undefined;
-
-const envSource = (importMetaEnv ?? processEnv ?? {}) as Record<string, string | undefined>;
+const resolveImportMetaEnv = (): EnvSource | undefined => {
+  try {
+    return (import.meta as ImportMeta & { env?: EnvSource }).env;
+  } catch {
+    return undefined;
+  }
+};
 
 const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? 'http://localhost:54321';
 const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'test-key';
