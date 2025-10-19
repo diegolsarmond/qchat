@@ -17,7 +17,7 @@ interface ChatSidebarProps {
   onToggleSidebar: () => void;
 }
 
-export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat }: ChatSidebarProps) => {
+export const ChatSidebar = ({ chats, selectedChat, onSelectChat, onAssignChat, showSidebar }: ChatSidebarProps) => {
   const navigate = useNavigate();
   const getInitials = (name: string) => {
     return name
