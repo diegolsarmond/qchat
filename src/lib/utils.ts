@@ -6,7 +6,8 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function extractCurlUrls(input: string) {
-  const regex = /curl\s+['"]?((?:https?|chrome-extension):\/\/[^'"\s\\]+)/gi;
+  const regex =
+    /curl\b(?:\s+-{1,2}[^\s'"]+(?:\s+(?:"[^"]*"|'[^']*'|[^\s'"]+))?)*\s+['"]?((?:https?|chrome-extension):\/\/[^'"\s\\]+)/gi;
   const seen = new Set<string>();
   const result: string[] = [];
 

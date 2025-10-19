@@ -93,3 +93,10 @@ test("extractCurlUrls identifica URLs distintas na ordem encontrada", () => {
     "chrome-extension://iohjgamcilhbgmhbnllfolmkmmekfmci/injected-scripts/iui.js",
   ]);
 });
+
+test("extractCurlUrls ignora flags antes da URL", () => {
+  const command =
+    "curl -H 'accept: */*' --compressed -X POST https://api.example.com/v1/resource -d 'foo=bar'";
+  const urls = [...extractCurlUrls(command)];
+  assert.deepEqual(urls, ["https://api.example.com/v1/resource"]);
+});
