@@ -2,15 +2,31 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const importMetaEnv = (() => {
+  try {
+    return (Function('return typeof import.meta !== "undefined" ? import.meta.env : undefined;')() as Record<string, string | undefined> | undefined);
+  } catch {
+    return undefined;
+  }
+})();
+
+const processEnv = typeof process !== 'undefined' && process?.env
+  ? process.env as Record<string, string | undefined>
+  : undefined;
+
+const envSource = importMetaEnv ?? processEnv ?? {};
+
+const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? 'http://localhost';
+const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'test-key';
+
+const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: localStorage,
+    storage: authStorage,
     persistSession: true,
     autoRefreshToken: true,
   }
