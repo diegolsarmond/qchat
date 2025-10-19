@@ -74,6 +74,7 @@ serve(async (req) => {
     };
     let contentToStore = content;
     let typeToStore = messageType;
+    const mediaDataToStore: Record<string, unknown> = {};
 
     if (isMediaMessage) {
       const finalMediaType = resolvedMediaType || mediaType;
@@ -114,7 +115,12 @@ serve(async (req) => {
       }
 
       contentToStore = caption || content || `[${finalMediaType}]`;
-      typeToStore = finalMediaType;
+      typeToStore = 'media';
+      mediaDataToStore.media_type = finalMediaType;
+      mediaDataToStore.caption = caption ?? null;
+      mediaDataToStore.document_name = documentName ?? null;
+      mediaDataToStore.media_url = mediaUrl ?? null;
+      mediaDataToStore.media_base64 = mediaBase64 ?? null;
     }
 
     const messageResponse = await fetch(`https://${credential.subdomain}.uazapi.com/send/${apiPath}`, {
@@ -151,6 +157,7 @@ serve(async (req) => {
         from_me: true,
         status: 'sent',
         message_timestamp: timestamp,
+        ...mediaDataToStore,
       });
 
     if (insertError) {
