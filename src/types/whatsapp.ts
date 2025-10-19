@@ -1,0 +1,37 @@
+export interface Credential {
+  id: string;
+  instanceName: string;
+  subdomain: string;
+  token: string;
+  adminToken?: string;
+  status: 'disconnected' | 'connecting' | 'connected';
+  qrCode?: string;
+  createdAt: Date;
+}
+
+export interface Chat {
+  id: string;
+  name: string;
+  lastMessage: string;
+  timestamp: string;
+  unread: number;
+  avatar?: string;
+  isGroup: boolean;
+  assignedTo?: string;
+}
+
+export interface Message {
+  id: string;
+  chatId: string;
+  content: string;
+  timestamp: string;
+  from: 'me' | 'them';
+  status?: 'sent' | 'delivered' | 'read';
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+}
