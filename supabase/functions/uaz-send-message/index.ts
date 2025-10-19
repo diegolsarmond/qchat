@@ -74,9 +74,14 @@ serve(async (req) => {
     };
     let contentToStore = content;
     let typeToStore = messageType;
+    let finalMediaType: string | undefined;
+    let captionToStore: string | null = null;
+    let documentNameToStore: string | null = null;
+    let mediaUrlToStore: string | null = null;
+    let mediaBase64ToStore: string | null = null;
 
     if (isMediaMessage) {
-      const finalMediaType = resolvedMediaType || mediaType;
+      finalMediaType = resolvedMediaType || mediaType;
       if (!finalMediaType) {
         return new Response(
           JSON.stringify({ error: 'Tipo de mídia é obrigatório' }),
@@ -96,6 +101,11 @@ serve(async (req) => {
         number: phoneNumber,
         type: finalMediaType,
       };
+
+      mediaUrlToStore = mediaUrl ?? null;
+      mediaBase64ToStore = mediaBase64 ?? null;
+      documentNameToStore = documentName ?? null;
+      captionToStore = caption ?? null;
 
       if (mediaUrl) {
         apiBody.url = mediaUrl;
@@ -148,6 +158,11 @@ serve(async (req) => {
         wa_message_id: messageData.Id || `msg_${timestamp}`,
         content: contentToStore,
         message_type: typeToStore,
+        media_type: finalMediaType ?? null,
+        media_url: mediaUrlToStore,
+        media_base64: mediaBase64ToStore,
+        caption: captionToStore,
+        document_name: documentNameToStore,
         from_me: true,
         status: 'sent',
         message_timestamp: timestamp,
