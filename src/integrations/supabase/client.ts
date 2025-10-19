@@ -9,7 +9,7 @@ type EnvSource = {
 
 const resolveImportMetaEnv = (): EnvSource | undefined => {
   try {
-    return new Function('return import.meta.env')();
+    return (import.meta as ImportMeta & { env?: EnvSource }).env;
   } catch {
     return undefined;
   }
