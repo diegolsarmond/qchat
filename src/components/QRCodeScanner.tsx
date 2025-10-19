@@ -19,8 +19,7 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
 
   const fetchQRCode = async () => {
     try {
-      setLoading(true);
-      setStatus("Buscando QR Code...");
+      setStatus("Verificando status da conexão...");
 
       const { data, error } = await supabase.functions.invoke('uaz-get-qr', {
         body: { credentialId }
@@ -28,36 +27,48 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
 
       if (error) throw error;
 
-      console.log('QR Code response:', data);
+      console.log('Status da instância:', data);
 
-      if (data.connected) {
-        setStatus("Conectado!");
-        setTimeout(() => onConnected(), 1500);
-      } else if (data.qrCode) {
+      // Se já está conectado, redireciona imediatamente
+      if (data.connected || data.status === 'connected') {
+        setStatus("Já conectado!");
+        setLoading(false);
+        toast({
+          title: "Conectado",
+          description: `WhatsApp já conectado: ${data.phoneNumber || 'número detectado'}`,
+        });
+        setTimeout(() => onConnected(), 500);
+        return;
+      }
+
+      // Se está no processo de conexão e tem QR code
+      if (data.qrCode) {
         setQrCode(data.qrCode);
         setLoading(false);
         setStatus("Escaneie o QR Code com seu WhatsApp");
-      } else if (data.status === 'connecting') {
+        return;
+      }
+
+      // Se está aguardando QR code
+      if (data.status === 'connecting' || data.status === 'disconnected') {
         setLoading(true);
-        setStatus("Aguardando QR Code...");
+        setStatus("Gerando QR Code...");
         // Retry after 2 seconds
         setTimeout(fetchQRCode, 2000);
-      } else {
-        setLoading(false);
-        setStatus("Erro ao gerar QR Code");
-        toast({
-          title: "Erro",
-          description: "Não foi possível gerar o QR Code",
-          variant: "destructive",
-        });
+        return;
       }
-    } catch (error) {
-      console.error('Error fetching QR code:', error);
+
+      // Caso não identificado
       setLoading(false);
-      setStatus("Erro ao conectar");
+      setStatus("Status desconhecido. Tente novamente.");
+      
+    } catch (error) {
+      console.error('Error fetching connection status:', error);
+      setLoading(false);
+      setStatus("Erro ao verificar conexão");
       toast({
         title: "Erro",
-        description: "Falha ao buscar QR Code",
+        description: "Falha ao verificar status da conexão",
         variant: "destructive",
       });
     }
@@ -78,10 +89,17 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
     };
 
     fetchCredential();
+    
+    // Primeira verificação imediata
     fetchQRCode();
 
-    // Poll for connection status every 3 seconds
-    const interval = setInterval(fetchQRCode, 3000);
+    // Poll for connection status apenas se não estiver conectado
+    // Verifica a cada 3 segundos
+    const interval = setInterval(() => {
+      if (!qrCode) {
+        fetchQRCode();
+      }
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [credentialId]);
