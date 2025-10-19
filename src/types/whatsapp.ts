@@ -27,6 +27,22 @@ export interface Message {
   timestamp: string;
   from: 'me' | 'them';
   status?: 'sent' | 'delivered' | 'read';
+  messageType?: 'text' | 'media';
+  mediaType?: string;
+  caption?: string;
+  documentName?: string;
+  mediaUrl?: string;
+  mediaBase64?: string;
+}
+
+export interface SendMessagePayload {
+  content: string;
+  messageType: 'text' | 'media';
+  mediaType?: string;
+  mediaUrl?: string;
+  mediaBase64?: string;
+  documentName?: string;
+  caption?: string;
 }
 
 export interface User {

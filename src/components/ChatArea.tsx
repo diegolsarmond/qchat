@@ -16,7 +16,7 @@ import {
   CheckCheck,
   ArrowLeft
 } from "lucide-react";
-import { Chat, Message } from "@/types/whatsapp";
+import { Chat, Message, SendMessagePayload } from "@/types/whatsapp";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,10 +24,53 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+type MediaOrigin = 'url' | 'base64';
+
+interface MediaPromptValues {
+  mediaType: string;
+  originType: MediaOrigin;
+  originValue: string;
+  caption?: string;
+  documentName?: string;
+}
+
+export const buildMediaMessagePayload = (values: MediaPromptValues): SendMessagePayload => {
+  const mediaType = values.mediaType.trim();
+  const originValue = values.originValue.trim();
+  const caption = values.caption?.trim();
+  const documentName = values.documentName?.trim();
+  const content = caption || `[${mediaType || 'mídia'}]`;
+
+  const payload: SendMessagePayload = {
+    content,
+    messageType: 'media',
+  };
+
+  if (mediaType) {
+    payload.mediaType = mediaType;
+  }
+
+  if (values.originType === 'url') {
+    payload.mediaUrl = originValue;
+  } else {
+    payload.mediaBase64 = originValue;
+  }
+
+  if (caption) {
+    payload.caption = caption;
+  }
+
+  if (documentName) {
+    payload.documentName = documentName;
+  }
+
+  return payload;
+};
+
 interface ChatAreaProps {
   chat: Chat | null;
   messages: Message[];
-  onSendMessage: (content: string) => void;
+  onSendMessage: (payload: SendMessagePayload) => void;
   onAssignChat: (chatId: string) => void;
   onLoadMoreMessages?: () => void;
   hasMoreMessages?: boolean;
@@ -60,7 +103,7 @@ export const ChatArea = ({
 
   const handleSend = () => {
     if (messageText.trim()) {
-      onSendMessage(messageText);
+      onSendMessage({ content: messageText, messageType: 'text' });
       setMessageText("");
     }
   };
@@ -70,6 +113,46 @@ export const ChatArea = ({
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleAttach = () => {
+    const typeResponse = window.prompt("Informe o tipo da mídia (image, document, audio, video)");
+    if (!typeResponse) {
+      return;
+    }
+
+    const originResponse = window.prompt("Informe a origem da mídia (url/base64)");
+    if (!originResponse) {
+      return;
+    }
+
+    const originType = originResponse.trim().toLowerCase();
+    if (originType !== 'url' && originType !== 'base64') {
+      return;
+    }
+
+    const valueResponse = window.prompt(
+      originType === 'url'
+        ? "Informe a URL da mídia"
+        : "Informe o conteúdo base64 da mídia"
+    );
+
+    if (!valueResponse) {
+      return;
+    }
+
+    const captionResponse = window.prompt("Informe a legenda (opcional)") ?? undefined;
+    const documentNameResponse = window.prompt("Informe o nome do documento (opcional)") ?? undefined;
+
+    const payload = buildMediaMessagePayload({
+      mediaType: typeResponse,
+      originType: originType as MediaOrigin,
+      originValue: valueResponse,
+      caption: captionResponse,
+      documentName: documentNameResponse,
+    });
+
+    onSendMessage(payload);
   };
 
   const getInitials = (name: string) => {
@@ -237,7 +320,12 @@ export const ChatArea = ({
         <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-white/10">
           <Smile className="w-5 h-5" />
         </Button>
-        <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-white/10">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-primary-foreground hover:bg-white/10"
+          onClick={handleAttach}
+        >
           <Paperclip className="w-5 h-5" />
         </Button>
         
