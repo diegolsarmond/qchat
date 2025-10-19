@@ -33,7 +33,15 @@ type IndexProps = {
 };
 
 const Index = ({ user }: IndexProps) => {
-  const [credentialId, setCredentialId] = useState<string | null>(null);
+  const [credentialId, setCredentialId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage?.getItem("activeCredentialId");
+      if (stored) {
+        return stored;
+      }
+    }
+    return null;
+  });
   const [isConnected, setIsConnected] = useState(false);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
