@@ -2,15 +2,34 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+type EnvSource = {
+  VITE_SUPABASE_URL?: string;
+  VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+};
+
+const resolveImportMetaEnv = (): EnvSource | undefined => {
+  try {
+    return new Function('return import.meta.env')();
+  } catch {
+    return undefined;
+  }
+};
+
+const envSource =
+  resolveImportMetaEnv() ||
+  ((typeof globalThis !== 'undefined' &&
+    (globalThis as typeof globalThis & { __VITE_ENV__?: EnvSource }).__VITE_ENV__) ||
+    (typeof process !== 'undefined' ? (process.env as EnvSource) : undefined));
+
+const SUPABASE_URL = envSource?.VITE_SUPABASE_URL ?? 'http://localhost';
+const SUPABASE_PUBLISHABLE_KEY = envSource?.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'public-anon-key';
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: localStorage,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     persistSession: true,
     autoRefreshToken: true,
   }
