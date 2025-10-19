@@ -54,6 +54,10 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
         description: "Credenciais salvas com sucesso!",
       });
 
+      if (typeof window !== "undefined") {
+        window.localStorage?.setItem("activeCredentialId", data.id);
+      }
+
       onSetupComplete(data.id);
     } catch (error) {
       console.error('Error saving credentials:', error);

@@ -10,6 +10,9 @@ type ChatSidebarModule = {
   ChatSidebar: (props: any) => any;
 };
 
+let navigateHandler: (path: string) => void = () => {};
+let signOutHandler: () => Promise<void> = async () => {};
+
 const loadChatSidebar = () => {
   const modulePath = fileURLToPath(new URL("../src/components/ChatSidebar.tsx", import.meta.url));
   const source = readFileSync(modulePath, "utf-8");
@@ -39,7 +42,7 @@ const loadChatSidebar = () => {
       return requireFn(specifier);
     }
     if (specifier === "react-router-dom") {
-      return { useNavigate: () => () => {} };
+      return { useNavigate: () => navigateHandler };
     }
     if (specifier === "lucide-react") {
       return {
@@ -77,6 +80,15 @@ const loadChatSidebar = () => {
         TabsTrigger: stubElement("button"),
       };
     }
+    if (specifier === "@/integrations/supabase/client") {
+      return {
+        supabase: {
+          auth: {
+            signOut: () => signOutHandler(),
+          },
+        },
+      };
+    }
     return requireFn(specifier);
   };
 
@@ -93,13 +105,25 @@ const collectChildren = (node: any) => {
   return Array.isArray(children) ? children : [children];
 };
 
-const findElementWithOnClick = (node: any): any => {
+const elementContainsText = (node: any, text: string): boolean => {
+  if (typeof node === "string") {
+    return node.toString().includes(text);
+  }
+  for (const child of collectChildren(node)) {
+    if (elementContainsText(child, text)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const findElementWithOnClickAndText = (node: any, text: string): any => {
   if (!node || typeof node !== "object") return null;
-  if (typeof node.props?.onClick === "function") {
+  if (typeof node.props?.onClick === "function" && elementContainsText(node, text)) {
     return node;
   }
   for (const child of collectChildren(node)) {
-    const found = findElementWithOnClick(child);
+    const found = findElementWithOnClickAndText(child, text);
     if (found) return found;
   }
   return null;
@@ -129,10 +153,45 @@ test("ChatSidebar aciona onToggleSidebar ao selecionar um chat", () => {
     },
   });
 
-  const clickable = findElementWithOnClick(element);
+  const clickable = findElementWithOnClickAndText(element, chat.name);
   assert.ok(clickable, "Elemento clicável não encontrado");
 
   clickable.props.onClick();
 
   assert.deepEqual(calls, ["toggle", "select"], "Eventos não ocorreram na ordem esperada");
+});
+
+test("ChatSidebar chama signOut e redireciona ao clicar em Sair", async () => {
+  const signOutCalls: number[] = [];
+  const navigateCalls: string[] = [];
+  signOutHandler = async () => {
+    signOutCalls.push(1);
+  };
+  navigateHandler = (path: string) => {
+    navigateCalls.push(path);
+  };
+
+  const ChatSidebar = loadChatSidebar();
+
+  const element = ChatSidebar({
+    chats: [],
+    selectedChat: null,
+    onSelectChat: () => {},
+    onAssignChat: () => {},
+    showSidebar: true,
+    onToggleSidebar: () => {},
+  });
+
+  assert.ok(elementContainsText(element, "Sair"), "Texto 'Sair' não foi renderizado");
+
+  const signOutButton = findElementWithOnClickAndText(element, "Sair");
+  assert.ok(signOutButton, "Botão de sair não encontrado");
+
+  await signOutButton.props.onClick();
+
+  assert.equal(signOutCalls.length, 1, "signOut não foi chamado");
+  assert.deepEqual(navigateCalls, ["/login"], "Redirecionamento inesperado");
+
+  signOutHandler = async () => {};
+  navigateHandler = () => {};
 });
