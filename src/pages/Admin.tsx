@@ -45,10 +45,15 @@ const Admin = () => {
       try {
         const sessionResult = await supabase.auth.getSession();
         const session = sessionResult.data.session;
-        const metadata = session?.user.user_metadata ?? {};
         const appMetadata = (session?.user as { app_metadata?: Record<string, unknown> | undefined })?.app_metadata ?? {};
-        const roleCandidate = (metadata.role ?? appMetadata.role) as string | undefined;
-        const isAdmin = roleCandidate === "admin" || metadata.is_admin === true || appMetadata.is_admin === true;
+        const appRole = appMetadata.role as string | undefined;
+        const appRoles = Array.isArray((appMetadata as { roles?: unknown }).roles)
+          ? ((appMetadata as { roles?: string[] }).roles ?? [])
+          : [];
+        const isAdmin =
+          appRole === "admin" ||
+          appRoles.includes("admin") ||
+          appMetadata.is_admin === true;
 
         if (!session || !isAdmin) {
           navigate("/", { replace: true });
