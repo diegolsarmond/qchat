@@ -24,13 +24,18 @@ const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'tes
 
 const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
+type SupabaseClientInstance = ReturnType<typeof createClient<Database>>;
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    storage: authStorage,
-    persistSession: true,
-    autoRefreshToken: true,
-  }
-});
+const globalSupabase = globalThis as typeof globalThis & { __supabaseClient__?: SupabaseClientInstance };
+
+if (!globalSupabase.__supabaseClient__) {
+  globalSupabase.__supabaseClient__ = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      storage: authStorage,
+      persistSession: true,
+      autoRefreshToken: true,
+    }
+  });
+}
+
+export const supabase = globalSupabase.__supabaseClient__;
