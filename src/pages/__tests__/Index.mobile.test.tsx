@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import { ChatSidebar } from "../../components/ChatSidebar";
 import { ChatArea } from "../../components/ChatArea";
 import type { Chat, Message } from "../../types/whatsapp";
@@ -37,7 +38,8 @@ const extractClassName = (html: string, testId: string) => {
   return match[1];
 };
 
-const renderComponent = (element: React.ReactElement) => renderToStaticMarkup(element);
+const renderComponent = (element: React.ReactElement) =>
+  renderToStaticMarkup(<MemoryRouter>{element}</MemoryRouter>);
 
 const noop = () => {};
 
