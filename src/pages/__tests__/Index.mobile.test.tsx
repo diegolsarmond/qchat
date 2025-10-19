@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { ChatSidebar } from "../../components/ChatSidebar";
 import { ChatArea } from "../../components/ChatArea";
-import type { Chat, Message } from "../../types/whatsapp";
+import type { Chat, Message, SendMessagePayload } from "../../types/whatsapp";
 
 const baseChat: Chat = {
   id: "chat-1",
@@ -41,7 +41,7 @@ const extractClassName = (html: string, testId: string) => {
 const renderComponent = (element: React.ReactElement) =>
   renderToStaticMarkup(<MemoryRouter>{element}</MemoryRouter>);
 
-const noop = () => {};
+const noop = (_payload?: SendMessagePayload) => {};
 
 const createSidebar = (showSidebar: boolean) => (
   <ChatSidebar

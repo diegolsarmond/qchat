@@ -12,7 +12,17 @@ serve(async (req) => {
   }
 
   try {
-    const { credentialId, chatId, content, messageType = 'text' } = await req.json();
+    const {
+      credentialId,
+      chatId,
+      content,
+      messageType = 'text',
+      mediaType,
+      mediaUrl,
+      mediaBase64,
+      documentName,
+      caption,
+    } = await req.json();
     
     console.log('[UAZ Send Message] Sending to chat:', chatId);
 
@@ -54,18 +64,67 @@ serve(async (req) => {
 
     console.log('[UAZ Send Message] Sending to number:', phoneNumber);
 
-    // Send message via UAZ API using POST /send/text
-    const messageResponse = await fetch(`https://${credential.subdomain}.uazapi.com/send/text`, {
+    const resolvedMediaType = mediaType || (messageType !== 'text' && messageType !== 'media' ? messageType : undefined);
+    const isMediaMessage = messageType === 'media' || !!resolvedMediaType || !!mediaUrl || !!mediaBase64;
+
+    let apiPath = 'text';
+    let apiBody: Record<string, unknown> = {
+      number: phoneNumber,
+      text: content,
+    };
+    let contentToStore = content;
+    let typeToStore = messageType;
+
+    if (isMediaMessage) {
+      const finalMediaType = resolvedMediaType || mediaType;
+      if (!finalMediaType) {
+        return new Response(
+          JSON.stringify({ error: 'Tipo de mídia é obrigatório' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!mediaUrl && !mediaBase64) {
+        return new Response(
+          JSON.stringify({ error: 'Origem da mídia é obrigatória' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      apiPath = 'media';
+      apiBody = {
+        number: phoneNumber,
+        type: finalMediaType,
+      };
+
+      if (mediaUrl) {
+        apiBody.url = mediaUrl;
+      }
+
+      if (mediaBase64) {
+        apiBody.base64 = mediaBase64;
+      }
+
+      if (documentName) {
+        apiBody.fileName = documentName;
+      }
+
+      if (caption) {
+        apiBody.caption = caption;
+      }
+
+      contentToStore = caption || content || `[${finalMediaType}]`;
+      typeToStore = finalMediaType;
+    }
+
+    const messageResponse = await fetch(`https://${credential.subdomain}.uazapi.com/send/${apiPath}`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         'token': credential.token,
       },
-      body: JSON.stringify({
-        number: phoneNumber,
-        text: content,
-      }),
+      body: JSON.stringify(apiBody),
     });
 
     if (!messageResponse.ok) {
@@ -87,8 +146,8 @@ serve(async (req) => {
       .insert({
         chat_id: chatId,
         wa_message_id: messageData.Id || `msg_${timestamp}`,
-        content: content,
-        message_type: messageType,
+        content: contentToStore,
+        message_type: typeToStore,
         from_me: true,
         status: 'sent',
         message_timestamp: timestamp,
@@ -100,9 +159,9 @@ serve(async (req) => {
 
     // Update last message in chat
     await supabaseClient
-      .from('chats')
-      .update({
-        last_message: content,
+        .from('chats')
+        .update({
+        last_message: contentToStore,
         last_message_timestamp: timestamp,
       })
       .eq('id', chatId);
