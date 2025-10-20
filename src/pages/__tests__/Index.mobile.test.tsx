@@ -55,6 +55,8 @@ const createSidebar = (showSidebar: boolean) => (
     activeFilter="all"
     onFilterChange={noop}
     currentUserId="user-mobile"
+    onDisconnect={() => {}}
+    isDisconnecting={false}
   />
 );
 

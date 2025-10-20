@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { ensureCredentialOwnership } from "../_shared/credential-guard.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,14 +13,45 @@ serve(async (req) => {
   }
 
   try {
-    const { credentialId } = await req.json();
-    
-    console.log('[UAZ Get QR] Request for credential:', credentialId);
+    const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization');
+    const accessToken = typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
+      ? authHeader.slice(7).trim()
+      : null;
+
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({ error: 'Credenciais ausentes' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
     const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      supabaseUrl,
+      serviceRoleKey,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      },
     );
+
+    const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+
+    if (authError || !authData?.user) {
+      return new Response(
+        JSON.stringify({ error: 'Credenciais inválidas' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { credentialId } = await req.json();
+
+    console.log('[UAZ Get QR] Request for credential:', credentialId);
 
     // Fetch credential from database
     const { data: credential, error: credError } = await supabaseClient
@@ -28,22 +60,26 @@ serve(async (req) => {
       .eq('id', credentialId)
       .single();
 
-    if (credError || !credential) {
+    if (credError) {
       console.error('[UAZ Get QR] Credential not found:', credError);
-      return new Response(
-        JSON.stringify({ error: 'Credential not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
     }
 
-    console.log('[UAZ Get QR] Fetching instance info from:', credential.subdomain);
+    const ownership = ensureCredentialOwnership(credential, authData.user.id, corsHeaders);
+
+    if (ownership.response) {
+      return ownership.response;
+    }
+
+    const ownedCredential = ownership.credential;
+
+    console.log('[UAZ Get QR] Fetching instance info from:', ownedCredential.subdomain);
 
     // Get instance status from UAZ API
-    const instanceResponse = await fetch(`https://${credential.subdomain}.uazapi.com/instance/status`, {
+    const instanceResponse = await fetch(`https://${ownedCredential.subdomain}.uazapi.com/instance/status`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'token': credential.token,
+        'token': ownedCredential.token,
       },
     });
 
@@ -80,7 +116,8 @@ serve(async (req) => {
     const { error: updateError } = await supabaseClient
       .from('credentials')
       .update(updateData)
-      .eq('id', credentialId);
+      .eq('id', credentialId)
+      .eq('user_id', authData.user.id);
 
     if (updateError) {
       console.error('[UAZ Get QR] Failed to update credential:', updateError);
