@@ -147,6 +147,23 @@ const inferAudioMimeType = (message: Message) => {
 
 type AudioSource = { url: string; shouldRevoke: boolean };
 
+type CachedAudioSource = {
+  source: AudioSource;
+  signature: string | null;
+};
+
+const getAudioSignature = (message: Message): string | null => {
+  if (message.mediaUrl) {
+    return `url:${message.mediaUrl}`;
+  }
+
+  if (message.mediaBase64) {
+    return `base64:${message.mediaBase64}`;
+  }
+
+  return null;
+};
+
 const resolveAudioSource = (message: Message): AudioSource | null => {
   if (message.mediaUrl) {
     return { url: message.mediaUrl, shouldRevoke: false };
@@ -347,10 +364,11 @@ export const ChatArea = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrivateRef = useRef(isPrivate);
   const orderedMessages = useMemo(() => [...messages], [messages]);
-  const audioSourcesRef = useRef<Map<string, AudioSource>>(new Map());
+  const audioSourcesRef = useRef<Map<string, CachedAudioSource>>(new Map());
   const audioSources = useMemo(() => {
     const previousSources = audioSourcesRef.current;
-    const nextSources = new Map<string, AudioSource>();
+    const nextSources = new Map<string, CachedAudioSource>();
+    const exposedSources = new Map<string, AudioSource>();
     const activeIds = new Set<string>();
 
     orderedMessages.forEach((message) => {
@@ -358,31 +376,46 @@ export const ChatArea = ({
         message.messageType === "media" &&
         (message.mediaType === "audio" || message.mediaType === "ptt")
       ) {
-        let source = previousSources.get(message.id);
-        if (!source) {
+        const signature = getAudioSignature(message);
+        let cachedSource = previousSources.get(message.id);
+
+        if (cachedSource && cachedSource.signature !== signature) {
+          if (cachedSource.source.shouldRevoke) {
+            if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+              URL.revokeObjectURL(cachedSource.source.url);
+            }
+          }
+          cachedSource = undefined;
+        }
+
+        if (!cachedSource) {
           const resolvedSource = resolveAudioSource(message);
           if (resolvedSource) {
-            source = resolvedSource;
+            cachedSource = {
+              source: resolvedSource,
+              signature,
+            };
           }
         }
 
-        if (source) {
-          nextSources.set(message.id, source);
+        if (cachedSource) {
+          nextSources.set(message.id, cachedSource);
+          exposedSources.set(message.id, cachedSource.source);
           activeIds.add(message.id);
         }
       }
     });
 
-    previousSources.forEach((source, id) => {
-      if (!activeIds.has(id) && source.shouldRevoke) {
+    previousSources.forEach((cachedSource, id) => {
+      if (!activeIds.has(id) && cachedSource.source.shouldRevoke) {
         if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
-          URL.revokeObjectURL(source.url);
+          URL.revokeObjectURL(cachedSource.source.url);
         }
       }
     });
 
     audioSourcesRef.current = nextSources;
-    return nextSources;
+    return exposedSources;
   }, [orderedMessages]);
 
   useEffect(() => {
@@ -399,9 +432,9 @@ export const ChatArea = ({
         return;
       }
 
-      audioSourcesRef.current.forEach((source) => {
-        if (source.shouldRevoke) {
-          URL.revokeObjectURL(source.url);
+      audioSourcesRef.current.forEach((cachedSource) => {
+        if (cachedSource.source.shouldRevoke) {
+          URL.revokeObjectURL(cachedSource.source.url);
         }
       });
     };
