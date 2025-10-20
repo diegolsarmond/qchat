@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveMessageStorage } from "../message-storage.ts";
+import { ensureCredentialOwnership } from "../_shared/credential-guard.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,6 +19,14 @@ serve(async (req) => {
     if (!authorization) {
       return new Response(
         JSON.stringify({ error: 'Missing authorization header' }),
+    const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization');
+    const accessToken = typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
+      ? authHeader.slice(7).trim()
+      : null;
+
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({ error: 'Credenciais ausentes' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -39,6 +48,26 @@ serve(async (req) => {
     if (userError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+    const supabaseClient = createClient(
+      supabaseUrl,
+      serviceRoleKey,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      },
+    );
+
+    const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+
+    if (authError || !authData?.user) {
+      return new Response(
+        JSON.stringify({ error: 'Credenciais inválidas' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -53,14 +82,13 @@ serve(async (req) => {
 
     const safeLimit = Math.max(1, Number(limit) || 50);
     const safeOffset = Math.max(0, Number(offset) || 0);
-    
-    console.log('[UAZ Fetch Messages] Fetching messages for chat:', chatId);
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
+    console.log('[UAZ Fetch Messages] Fetching messages for chat:', chatId);
 
     // Fetch credential
     const { data: credential, error: credError } = await supabaseClient
@@ -69,18 +97,14 @@ serve(async (req) => {
       .eq('id', credentialId)
       .single();
 
-    if (credError || !credential) {
-      return new Response(
-        JSON.stringify({ error: 'Credential not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (credError) {
+      console.error('[UAZ Fetch Messages] Failed to fetch credential:', credError);
     }
 
-    if (!credential.user_id) {
-      return new Response(
-        JSON.stringify({ error: 'Credential missing owner' }),
-        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const ownership = ensureCredentialOwnership(credential, authData.user.id, corsHeaders);
+
+    if (ownership.response) {
+      return ownership.response;
     }
 
     if (credential.user_id !== user.id) {
@@ -89,13 +113,14 @@ serve(async (req) => {
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    const ownedCredential = ownership.credential;
 
     // Fetch chat
     const { data: chat, error: chatError } = await supabaseClient
       .from('chats')
       .select('wa_chat_id')
       .eq('id', chatId)
-      .eq('user_id', credential.user_id)
+      .eq('user_id', authData.user.id)
       .single();
 
     if (chatError || !chat) {
@@ -108,12 +133,12 @@ serve(async (req) => {
     console.log('[UAZ Fetch Messages] Fetching from UAZ API for:', chat.wa_chat_id);
 
     // Fetch messages from UAZ API using POST /message/find
-    const messagesResponse = await fetch(`https://${credential.subdomain}.uazapi.com/message/find`, {
+    const messagesResponse = await fetch(`https://${ownedCredential.subdomain}.uazapi.com/message/find`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'token': credential.token,
+        'token': ownedCredential.token,
       },
       body: JSON.stringify({
         chatid: chat.wa_chat_id,
@@ -155,6 +180,7 @@ serve(async (req) => {
           .upsert({
             chat_id: chatId,
             credential_id: credentialId,
+            user_id: authData.user.id,
             wa_message_id: msg.messageid,
             content: storage.content,
             message_type: storage.messageType,
@@ -169,7 +195,6 @@ serve(async (req) => {
             status: msg.status || '',
             message_timestamp: msg.messageTimestamp || 0,
             is_private: Boolean(msg.isPrivate),
-            user_id: credential.user_id,
           }, {
             onConflict: 'chat_id,wa_message_id'
           });
@@ -183,7 +208,7 @@ serve(async (req) => {
       .from('messages')
       .select('*', { count: 'exact' })
       .eq('chat_id', chatId)
-      .eq('user_id', credential.user_id)
+      .eq('user_id', authData.user.id)
       .order('message_timestamp', { ascending: order !== 'desc' })
       .range(safeOffset, safeOffset + safeLimit - 1);
 

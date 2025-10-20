@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,11 +17,44 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
   const [token, setToken] = useState("");
   const [adminToken, setAdminToken] = useState("");
   const [loading, setLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    let active = true;
+
+    const loadUserCredentials = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data?.user) {
+        return;
+      }
+
+      if (active) {
+        setUserId(data.user.id);
+      }
+
+      const { data: existing } = await supabase
+        .from('credentials')
+        .select('id')
+        .eq('user_id', data.user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (active && existing && existing.length > 0) {
+        onSetupComplete(existing[0].id);
+      }
+    };
+
+    loadUserCredentials();
+
+    return () => {
+      active = false;
+    };
+  }, [onSetupComplete]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!instanceName || !subdomain || !token) {
       toast({
         title: "Erro",
@@ -34,10 +67,14 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
     setLoading(true);
 
     try {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-
-      if (userError || !userData?.user) {
-        throw new Error("Usuário não autenticado");
+      let currentUserId = userId;
+      if (!currentUserId) {
+        const { data, error } = await supabase.auth.getUser();
+        if (error || !data?.user) {
+          throw error || new Error('Usuário não autenticado');
+        }
+        currentUserId = data.user.id;
+        setUserId(currentUserId);
       }
 
       // Insert credential into database
@@ -49,7 +86,7 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
           token: token,
           admin_token: adminToken || null,
           status: 'disconnected',
-          user_id: userData.user.id,
+          user_id: currentUserId,
         })
         .select()
         .single();
@@ -60,10 +97,6 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
         title: "Sucesso",
         description: "Credenciais salvas com sucesso!",
       });
-
-      if (typeof window !== "undefined") {
-        window.localStorage?.setItem("activeCredentialId", data.id);
-      }
 
       onSetupComplete(data.id);
     } catch (error) {
