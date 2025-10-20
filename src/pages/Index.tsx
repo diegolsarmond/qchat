@@ -25,8 +25,8 @@ const MESSAGE_PAGE_SIZE = 50;
 const formatTimestamp = (value: number | string | null | undefined) =>
   new Date(value ?? Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-const mapApiMessage = (m: any): Message => ({
-  id: m.id,
+export const mapApiMessage = (m: any): Message => ({
+  id: m.wa_message_id ?? m.id,
   chatId: m.chat_id,
   content: m.content || "",
   timestamp: formatTimestamp(m.message_timestamp),
@@ -418,8 +418,10 @@ const Index = ({ user }: IndexProps) => {
         messageId = data.messageId;
       }
 
+      const waMessageId = messageId || fallbackId();
+
       const newMessage: Message = {
-        id: messageId || fallbackId(),
+        id: waMessageId,
         chatId: selectedChat.id,
         content: messageContent,
         timestamp,
