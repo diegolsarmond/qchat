@@ -14,7 +14,8 @@ import {
   Video,
   Check,
   CheckCheck,
-  ArrowLeft
+  ArrowLeft,
+  X
 } from "lucide-react";
 import { Chat, Message, SendMessagePayload } from "@/types/whatsapp";
 import {
@@ -67,6 +68,155 @@ export const buildMediaMessagePayload = (values: MediaPromptValues): SendMessage
   return payload;
 };
 
+const blobToBase64 = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        const [, base64] = reader.result.split(",");
+        resolve(base64 ?? "");
+        return;
+      }
+      reject(new Error("Invalid reader result"));
+    };
+    reader.onerror = () => reject(new Error("Failed to read blob"));
+    reader.readAsDataURL(blob);
+  });
+
+interface AudioRecorderOptions {
+  getOnSendMessage: () => (payload: SendMessagePayload) => void;
+  setIsRecording: (value: boolean) => void;
+  setChunks: (chunks: Blob[]) => void;
+}
+
+interface AudioRecorderControls {
+  startRecording: () => Promise<void>;
+  finishRecording: () => void;
+  cancelRecording: () => void;
+  dispose: () => void;
+}
+
+export const createAudioRecorder = ({
+  getOnSendMessage,
+  setIsRecording,
+  setChunks,
+}: AudioRecorderOptions): AudioRecorderControls => {
+  const mediaRecorderRef: { current: MediaRecorder | null } = { current: null };
+  const mediaStreamRef: { current: MediaStream | null } = { current: null };
+  const recordingChunksRef: { current: Blob[] } = { current: [] };
+  const shouldSendRecordingRef: { current: boolean } = { current: false };
+
+  const cleanupStream = () => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+  };
+
+  const startRecording = async () => {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      mediaStreamRef.current = stream;
+      shouldSendRecordingRef.current = false;
+      recordingChunksRef.current = [];
+      setChunks([]);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          const updated = [...recordingChunksRef.current, event.data];
+          recordingChunksRef.current = updated;
+          setChunks(updated);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const chunks = recordingChunksRef.current;
+        cleanupStream();
+        setIsRecording(false);
+        recordingChunksRef.current = [];
+        setChunks([]);
+        if (!shouldSendRecordingRef.current) {
+          shouldSendRecordingRef.current = false;
+          return;
+        }
+        shouldSendRecordingRef.current = false;
+        if (!chunks.length) {
+          return;
+        }
+        const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+        try {
+          const base64 = await blobToBase64(blob);
+          const payload = buildMediaMessagePayload({
+            mediaType: "ptt",
+            originType: "base64",
+            originValue: base64,
+          });
+          getOnSendMessage()(payload);
+        } catch {}
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch {
+      cleanupStream();
+      recordingChunksRef.current = [];
+      setChunks([]);
+      setIsRecording(false);
+    }
+  };
+
+  const finishRecording = () => {
+    shouldSendRecordingRef.current = true;
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state === "recording") {
+      recorder.stop();
+    }
+  };
+
+  const cancelRecording = () => {
+    shouldSendRecordingRef.current = false;
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state === "recording") {
+      recorder.stop();
+    } else {
+      cleanupStream();
+      recordingChunksRef.current = [];
+      setChunks([]);
+      setIsRecording(false);
+    }
+  };
+
+  const dispose = () => {
+    shouldSendRecordingRef.current = false;
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+    cleanupStream();
+    recordingChunksRef.current = [];
+    setChunks([]);
+    setIsRecording(false);
+  };
+
+  return {
+    startRecording,
+    finishRecording,
+    cancelRecording,
+    dispose,
+  };
+};
+
 interface ChatAreaProps {
   chat: Chat | null;
   messages: Message[];
@@ -93,8 +243,30 @@ export const ChatArea = ({
   onShowSidebar,
 }: ChatAreaProps) => {
   const [messageText, setMessageText] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingChunks, setRecordingChunks] = useState<Blob[]>([]);
+  const onSendMessageRef = useRef(onSendMessage);
+  const recorderRef = useRef<ReturnType<typeof createAudioRecorder> | null>(null);
   const messagesStartRef = useRef<HTMLDivElement>(null);
   const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
+
+  useEffect(() => {
+    onSendMessageRef.current = onSendMessage;
+  }, [onSendMessage]);
+
+  if (!recorderRef.current) {
+    recorderRef.current = createAudioRecorder({
+      getOnSendMessage: () => onSendMessageRef.current,
+      setIsRecording,
+      setChunks: setRecordingChunks,
+    });
+  }
+
+  useEffect(() => {
+    return () => {
+      recorderRef.current?.dispose();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isPrependingMessages) {
@@ -107,6 +279,18 @@ export const ChatArea = ({
       onSendMessage({ content: messageText, messageType: 'text' });
       setMessageText("");
     }
+  };
+
+  const handleStartRecording = () => {
+    recorderRef.current?.startRecording();
+  };
+
+  const handleFinishRecording = () => {
+    recorderRef.current?.finishRecording();
+  };
+
+  const handleCancelRecording = () => {
+    recorderRef.current?.cancelRecording();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -330,24 +514,61 @@ export const ChatArea = ({
           <Paperclip className="w-5 h-5" />
         </Button>
         
-        <Input
-          value={messageText}
-          onChange={(e) => setMessageText(e.target.value)}
-          onKeyPress={handleKeyPress}
-          placeholder="Digite uma mensagem"
-          className="flex-1 bg-white/90"
-        />
-        
-        {messageText.trim() ? (
-          <Button 
+        {isRecording ? (
+          <div className="flex-1 bg-white/90 rounded-md px-3 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+              Gravando áudio...
+            </div>
+            <span className="text-xs text-muted-foreground">{recordingChunks.length} bloco(s)</span>
+          </div>
+        ) : (
+          <Input
+            value={messageText}
+            onChange={(e) => setMessageText(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Digite uma mensagem"
+            className="flex-1 bg-white/90"
+          />
+        )}
+
+        {isRecording ? (
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-primary-foreground hover:bg-white/10"
+              onClick={handleCancelRecording}
+              aria-label="Cancelar gravação"
+            >
+              <X className="w-5 h-5" />
+            </Button>
+            <Button
+              onClick={handleFinishRecording}
+              size="icon"
+              className="bg-primary hover:bg-primary/90"
+              aria-label="Enviar áudio gravado"
+            >
+              <Send className="w-5 h-5" />
+            </Button>
+          </>
+        ) : messageText.trim() ? (
+          <Button
             onClick={handleSend}
-            size="icon" 
+            size="icon"
             className="bg-primary hover:bg-primary/90"
+            aria-label="Enviar mensagem"
           >
             <Send className="w-5 h-5" />
           </Button>
         ) : (
-          <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-white/10">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-primary-foreground hover:bg-white/10"
+            onClick={handleStartRecording}
+            aria-label="Iniciar gravação de áudio"
+          >
             <Mic className="w-5 h-5" />
           </Button>
         )}
