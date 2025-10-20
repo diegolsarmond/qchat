@@ -121,7 +121,7 @@ serve(async (req) => {
       }
 
       apiPath = 'media';
-      apiBody = buildUazMediaApiBody({
+      const mediaBody = buildUazMediaApiBody({
         phoneNumber,
         mediaType: normalizedFinalMediaType,
         mediaUrl: storageMediaUrl,
@@ -129,6 +129,12 @@ serve(async (req) => {
         caption: storageCaption,
         documentName: storageDocumentName,
       });
+      const { mediaUrl: finalMediaUrl, mediaBase64: finalMediaBase64, ...restMediaBody } = mediaBody;
+      apiBody = {
+        ...restMediaBody,
+        ...(finalMediaUrl ? { mediaUrl: finalMediaUrl } : {}),
+        ...(finalMediaBase64 ? { mediaBase64: finalMediaBase64 } : {}),
+      };
     }
 
     const messageResponse = await fetch(`https://${credential.subdomain}.uazapi.com/send/${apiPath}`, {

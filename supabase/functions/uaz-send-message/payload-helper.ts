@@ -7,6 +7,15 @@ export interface UazMediaPayloadParams {
   documentName: string | null;
 }
 
+interface UazMediaApiBody {
+  number: string;
+  mediaType: string;
+  mediaUrl?: string;
+  mediaBase64?: string;
+  caption?: string;
+  documentName?: string;
+}
+
 export const buildUazMediaApiBody = ({
   phoneNumber,
   mediaType,
@@ -14,23 +23,24 @@ export const buildUazMediaApiBody = ({
   mediaBase64,
   caption,
   documentName,
-}: UazMediaPayloadParams): Record<string, unknown> => {
-  const file = mediaUrl ?? mediaBase64;
-  const normalizedMediaType =
-    mediaType.toLowerCase() === 'ptt' ? 'audio' : mediaType;
-
-  if (!file) {
+}: UazMediaPayloadParams): UazMediaApiBody => {
+  if (!mediaUrl && !mediaBase64) {
     throw new Error('Origem da mídia é obrigatória');
   }
 
-  const payload: Record<string, unknown> = {
+  const payload: UazMediaApiBody = {
     number: phoneNumber,
-    type: normalizedMediaType,
-    file,
+    mediaType,
   };
 
+  if (mediaUrl) {
+    payload.mediaUrl = mediaUrl;
+  } else if (mediaBase64) {
+    payload.mediaBase64 = mediaBase64;
+  }
+
   if (documentName) {
-    payload.docName = documentName;
+    payload.documentName = documentName;
   }
 
   if (caption) {
