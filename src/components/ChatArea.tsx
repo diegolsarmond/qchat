@@ -37,7 +37,7 @@ const determineMediaType = (file: File) => {
 };
 
 const shouldUseBase64 = (mediaType: string) => {
-  return mediaType === 'image' || mediaType === 'document';
+  return mediaType === 'image' || mediaType === 'document' || mediaType === 'audio' || mediaType === 'video';
 };
 
 const fileToBase64 = (file: File) => {
@@ -354,17 +354,6 @@ export const ChatArea = ({
           documentName: mediaType === 'document' ? file.name : undefined,
         });
         onSendMessage(payload);
-      } else {
-        const mediaUrl = URL.createObjectURL(file);
-        const payload = buildMediaMessagePayload({
-          mediaType,
-          originType: 'url',
-          originValue: mediaUrl,
-        });
-        onSendMessage(payload);
-        setTimeout(() => {
-          URL.revokeObjectURL(mediaUrl);
-        }, 0);
       }
     } catch {
     } finally {
