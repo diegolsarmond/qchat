@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,13 +93,14 @@ export const ChatArea = ({
   onShowSidebar,
 }: ChatAreaProps) => {
   const [messageText, setMessageText] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesStartRef = useRef<HTMLDivElement>(null);
+  const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
 
   useEffect(() => {
     if (!isPrependingMessages) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      messagesStartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [messages, isPrependingMessages]);
+  }, [orderedMessages, isPrependingMessages]);
 
   const handleSend = () => {
     if (messageText.trim()) {
@@ -275,19 +276,8 @@ export const ChatArea = ({
         backgroundImage: `url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 10h1v1h-1z' fill='%23000000' fill-opacity='0.02'/%3E%3C/svg%3E")`,
       }}>
         <div className="space-y-3 max-w-4xl mx-auto">
-          {hasMoreMessages && onLoadMoreMessages && (
-            <div className="flex justify-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onLoadMoreMessages}
-                disabled={isLoadingMoreMessages}
-              >
-                {isLoadingMoreMessages ? "Carregando..." : "Carregar mensagens anteriores"}
-              </Button>
-            </div>
-          )}
-          {messages.map((message) => (
+          <div ref={messagesStartRef} />
+          {orderedMessages.map((message) => (
             <div
               key={message.id}
               className={`flex ${message.from === 'me' ? 'justify-end' : 'justify-start'}`}
@@ -310,9 +300,20 @@ export const ChatArea = ({
                 </div>
               </div>
             </div>
-              ))}
-              <div ref={messagesEndRef} />
+          ))}
+          {hasMoreMessages && onLoadMoreMessages && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onLoadMoreMessages}
+                disabled={isLoadingMoreMessages}
+              >
+                {isLoadingMoreMessages ? "Carregando..." : "Carregar mensagens anteriores"}
+              </Button>
             </div>
+          )}
+        </div>
       </ScrollArea>
 
       {/* Input Area */}
