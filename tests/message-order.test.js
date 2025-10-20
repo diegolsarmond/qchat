@@ -31,6 +31,11 @@ new vm.Script(outputText, { filename: modulePath }).runInContext(context);
 
 const { normalizeFetchedMessages, mergeFetchedMessages } = module.exports;
 
+test("normalizeFetchedMessages reverte lista descendente sem mutar original", () => {
+  const fetched = [
+    { id: "4" },
+    { id: "3" },
+    { id: "2" },
 test("normalizeFetchedMessages devolve cópia com ordem cronológica", () => {
   const fetched = [
     { id: "3" },
@@ -42,11 +47,11 @@ test("normalizeFetchedMessages devolve cópia com ordem cronológica", () => {
 
   strictEqual(
     JSON.stringify(normalized.map(message => message.id)),
-    JSON.stringify(["1", "2", "3"]),
+    JSON.stringify(["2", "3", "4"]),
   );
   strictEqual(
     JSON.stringify(fetched.map(message => message.id)),
-    JSON.stringify(["3", "2", "1"]),
+    JSON.stringify(["4", "3", "2"]),
   );
   notStrictEqual(normalized, fetched);
 });
