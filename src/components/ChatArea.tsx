@@ -278,8 +278,9 @@ export const ChatArea = ({
   const onSendMessageRef = useRef(onSendMessage);
   const recorderRef = useRef<ReturnType<typeof createAudioRecorder> | null>(null);
   const messagesStartRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  const orderedMessages = useMemo(() => [...messages], [messages]);
 
   useEffect(() => {
     onSendMessageRef.current = onSendMessage;
@@ -301,7 +302,7 @@ export const ChatArea = ({
 
   useEffect(() => {
     if (!isPrependingMessages) {
-      messagesStartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
   }, [orderedMessages, isPrependingMessages]);
 
@@ -482,6 +483,18 @@ export const ChatArea = ({
       }}>
         <div className="space-y-3 max-w-4xl mx-auto">
           <div ref={messagesStartRef} />
+          {hasMoreMessages && onLoadMoreMessages && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onLoadMoreMessages}
+                disabled={isLoadingMoreMessages}
+              >
+                {isLoadingMoreMessages ? "Carregando..." : "Carregar mensagens anteriores"}
+              </Button>
+            </div>
+          )}
           {orderedMessages.map((message) => (
             <div
               key={message.id}
@@ -506,18 +519,7 @@ export const ChatArea = ({
               </div>
             </div>
           ))}
-          {hasMoreMessages && onLoadMoreMessages && (
-            <div className="flex justify-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onLoadMoreMessages}
-                disabled={isLoadingMoreMessages}
-              >
-                {isLoadingMoreMessages ? "Carregando..." : "Carregar mensagens anteriores"}
-              </Button>
-            </div>
-          )}
+          <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
 
