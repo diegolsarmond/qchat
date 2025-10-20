@@ -64,15 +64,41 @@ export async function upsertFetchedMessages({
     return;
   }
 
-  try {
-    const { error } = await supabaseClient
-      .from("messages")
-      .upsert(payload, { onConflict: "chat_id,wa_message_id" });
-
-    if (error) {
-      console.error("[UAZ Fetch Messages] Failed to upsert messages:", error);
+  const validRecords = payload.filter((record) => {
+    if (!record.wa_message_id) {
+      console.warn(
+        "[UAZ Fetch Messages] Skipping message without wa_message_id",
+        record
+      );
+      return false;
     }
-  } catch (upsertError) {
-    console.error("[UAZ Fetch Messages] Failed to upsert messages:", upsertError);
+
+    return true;
+  });
+
+  if (validRecords.length === 0) {
+    return;
+  }
+
+  for (const record of validRecords) {
+    try {
+      const { error } = await supabaseClient
+        .from("messages")
+        .upsert([record], { onConflict: "chat_id,wa_message_id" });
+
+      if (error) {
+        console.error(
+          "[UAZ Fetch Messages] Failed to upsert message:",
+          error,
+          record
+        );
+      }
+    } catch (upsertError) {
+      console.error(
+        "[UAZ Fetch Messages] Failed to upsert message:",
+        upsertError,
+        record
+      );
+    }
   }
 }
