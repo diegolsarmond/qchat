@@ -487,14 +487,38 @@ export const ChatArea = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const orderedMessages = useMemo(() => [...messages], [messages]);
+  const audioSourcesRef = useRef<Map<string, AudioSource>>(new Map());
   const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
   const audioSources = useMemo(() => {
-    const map = new Map<string, AudioSource>();
+    const previousSources = audioSourcesRef.current;
+    const nextSources = new Map<string, AudioSource>();
+    const activeIds = new Set<string>();
+
     orderedMessages.forEach((message) => {
       if (
         message.messageType !== "media" ||
         (message.mediaType !== "audio" && message.mediaType !== "ptt" && message.mediaType !== "voice")
       ) {
+        let source = previousSources.get(message.id);
+        if (!source) {
+          const resolvedSource = resolveAudioSource(message);
+          if (resolvedSource) {
+            source = resolvedSource;
+          }
+        }
+
+        if (source) {
+          nextSources.set(message.id, source);
+          activeIds.add(message.id);
+        }
+      }
+    });
+
+    previousSources.forEach((source, id) => {
+      if (!activeIds.has(id) && source.shouldRevoke) {
+        if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+          URL.revokeObjectURL(source.url);
+        }
         return;
       }
       const source = resolveAudioSource(message);
@@ -521,7 +545,9 @@ export const ChatArea = ({
         map.set(message.id, source);
       }
     });
-    return map;
+
+    audioSourcesRef.current = nextSources;
+    return nextSources;
   }, [orderedMessages]);
 
   useEffect(() => {
@@ -533,21 +559,18 @@ export const ChatArea = ({
   }, [isPrivate]);
 
   useEffect(() => {
-    const urls: string[] = [];
-    audioSources.forEach((source) => {
-      if (source.shouldRevoke) {
-        urls.push(source.url);
-      }
-    });
     return () => {
       if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
         return;
       }
-      urls.forEach((url) => {
-        URL.revokeObjectURL(url);
+
+      audioSourcesRef.current.forEach((source) => {
+        if (source.shouldRevoke) {
+          URL.revokeObjectURL(source.url);
+        }
       });
     };
-  }, [audioSources]);
+  }, []);
 
   if (!recorderRef.current) {
     recorderRef.current = createAudioRecorder({
