@@ -35,6 +35,13 @@ serve(async (req) => {
       );
     }
 
+    if (!credential.user_id) {
+      return new Response(
+        JSON.stringify({ error: 'Credential missing owner' }),
+        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log('[UAZ Fetch Chats] Fetching from UAZ API');
 
     // Fetch chats from UAZ API using POST /chat/find
@@ -81,6 +88,7 @@ serve(async (req) => {
             unread_count: chat.wa_unreadCount || 0,
             avatar: chat.image || '',
             is_group: chat.wa_isGroup || false,
+            user_id: credential.user_id,
           }, {
             onConflict: 'credential_id,wa_chat_id'
           });
@@ -94,6 +102,7 @@ serve(async (req) => {
       .from('chats')
       .select('*', { count: 'exact' })
       .eq('credential_id', credentialId)
+      .eq('user_id', credential.user_id)
       .order('last_message_timestamp', { ascending: false })
       .range(offset, offset + limit - 1);
 

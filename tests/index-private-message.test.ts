@@ -264,6 +264,7 @@ test("mensagens privadas registram apenas no banco", () => {
     assert.equal(insertCalls.length, 1);
     assert.equal(insertCalls[0].content, "Mensagem privada");
     assert.equal(insertCalls[0].is_private, true);
+    assert.equal(insertCalls[0].user_id, "user");
   } finally {
     global.window = originalWindow;
     global.localStorage = originalLocalStorage;
