@@ -17,7 +17,8 @@ import {
   ArrowLeft,
   X,
   Lock,
-  Unlock
+  Unlock,
+  MapPin,
 } from "lucide-react";
 import { Chat, Message, SendMessagePayload } from "@/types/whatsapp";
 import {
@@ -355,6 +356,42 @@ export const ChatArea = ({
     fileInputRef.current?.click();
   };
 
+  const handleSendLocation = () => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const latitudeInput = window.prompt('Informe a latitude');
+    if (!latitudeInput) {
+      return;
+    }
+
+    const longitudeInput = window.prompt('Informe a longitude');
+    if (!longitudeInput) {
+      return;
+    }
+
+    const latitude = Number(latitudeInput);
+    const longitude = Number(longitudeInput);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return;
+    }
+
+    const locationNameInput = window.prompt('Informe o nome do local') ?? '';
+    const trimmedLocationName = locationNameInput.trim();
+    const content = trimmedLocationName || `${latitude}, ${longitude}`;
+
+    onSendMessage({
+      content,
+      messageType: 'location',
+      latitude,
+      longitude,
+      locationName: trimmedLocationName || undefined,
+      ...(isPrivate ? { isPrivate: true } : {}),
+    });
+  };
+
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const target = event.target;
     const file = target.files?.[0];
@@ -565,6 +602,16 @@ export const ChatArea = ({
           aria-label="Anexar arquivo"
         >
           <Paperclip className="w-5 h-5" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-primary-foreground hover:bg-white/10"
+          onClick={handleSendLocation}
+          aria-label="Enviar localização"
+        >
+          <MapPin className="w-5 h-5" />
         </Button>
         
         {isRecording ? (

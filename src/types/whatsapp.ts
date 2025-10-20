@@ -33,23 +33,29 @@ export interface Message {
   timestamp: string;
   from: 'me' | 'them';
   status?: 'sent' | 'delivered' | 'read';
-  messageType?: 'text' | 'media';
+  messageType?: 'text' | 'media' | 'location';
   mediaType?: string;
   caption?: string;
   documentName?: string;
   mediaUrl?: string;
   mediaBase64?: string;
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
 }
 
 export interface SendMessagePayload {
   content: string;
-  messageType: 'text' | 'media';
+  messageType: 'text' | 'media' | 'location';
   mediaType?: string;
   mediaUrl?: string;
   mediaBase64?: string;
   documentName?: string;
   caption?: string;
   isPrivate?: boolean;
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
 }
 
 export interface User {

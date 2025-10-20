@@ -7,6 +7,15 @@ export interface UazMediaPayloadParams {
   documentName: string | null;
 }
 
+export interface UazLocationPayloadParams {
+  phoneNumber: string;
+  latitude: number;
+  longitude: number;
+  locationName?: string | null;
+}
+
+export const UAZ_LOCATION_API_PATH = 'location';
+
 export const buildUazMediaApiBody = ({
   phoneNumber,
   mediaType,
@@ -33,6 +42,30 @@ export const buildUazMediaApiBody = ({
 
   if (caption) {
     payload.caption = caption;
+  }
+
+  return payload;
+};
+
+export const buildUazLocationApiBody = ({
+  phoneNumber,
+  latitude,
+  longitude,
+  locationName,
+}: UazLocationPayloadParams): Record<string, unknown> => {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    throw new Error('Coordenadas inválidas');
+  }
+
+  const payload: Record<string, unknown> = {
+    number: phoneNumber,
+    latitude,
+    longitude,
+  };
+
+  const trimmedName = locationName?.trim();
+  if (trimmedName) {
+    payload.locationName = trimmedName;
   }
 
   return payload;

@@ -367,9 +367,19 @@ const Index = ({ user }: IndexProps) => {
   const handleSendMessage = async (payload: SendMessagePayload) => {
     if (!selectedChat || !credentialId) return;
 
-    const messageContent = payload.messageType === 'text'
-      ? payload.content
-      : payload.caption || `[${payload.mediaType || 'mídia'}]`;
+    let messageContent = '';
+
+    if (payload.messageType === 'text') {
+      messageContent = payload.content;
+    } else if (payload.messageType === 'media') {
+      messageContent = payload.caption || `[${payload.mediaType || 'mídia'}]`;
+    } else {
+      const fallbackCoordinates =
+        typeof payload.latitude === 'number' && typeof payload.longitude === 'number'
+          ? `${payload.latitude}, ${payload.longitude}`
+          : '';
+      messageContent = payload.locationName || payload.content || fallbackCoordinates;
+    }
     const timestamp = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const fallbackId = () => {
       if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
@@ -386,7 +396,7 @@ const Index = ({ user }: IndexProps) => {
           id: messageId,
           chat_id: selectedChat.id,
           credential_id: credentialId,
-          content: payload.content,
+          content: messageContent,
           message_type: payload.messageType,
           media_type: payload.mediaType,
           media_url: payload.mediaUrl,
@@ -411,6 +421,9 @@ const Index = ({ user }: IndexProps) => {
             mediaBase64: payload.mediaBase64,
             documentName: payload.documentName,
             caption: payload.caption,
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+            locationName: payload.locationName,
           }
         });
 
@@ -433,6 +446,9 @@ const Index = ({ user }: IndexProps) => {
         documentName: payload.documentName,
         mediaUrl: payload.mediaUrl,
         mediaBase64: payload.mediaBase64,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        locationName: payload.locationName,
       };
 
       setMessages(prev => [...prev, newMessage]);
