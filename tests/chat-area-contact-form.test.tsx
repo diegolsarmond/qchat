@@ -32,7 +32,8 @@ test("botão de contato exibe formulário ao ser ativado", async () => {
   const toggle = getByLabelText("Abrir formulário de contato");
   await fireEvent.click(toggle);
 
-  assert.equal(getByLabelText("Fechar formulário de contato").getAttribute("aria-pressed"), "true");
+  const closeToggle = getByLabelText("Fechar formulário de contato");
+  assert.equal(closeToggle.getAttribute("aria-label"), "Fechar formulário de contato");
   assert.ok(queryByPlaceholderText("Nome do contato"));
   assert.ok(queryByPlaceholderText("Telefone"));
 });
