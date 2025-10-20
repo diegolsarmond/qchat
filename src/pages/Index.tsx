@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { CredentialSetup } from "@/components/CredentialSetup";
 import { QRCodeScanner } from "@/components/QRCodeScanner";
 import { ChatSidebar } from "@/components/ChatSidebar";
@@ -7,7 +7,13 @@ import { AssignChatDialog } from "@/components/AssignChatDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
-import { Chat, Message, User as WhatsAppUser, SendMessagePayload } from "@/types/whatsapp";
+import {
+  Chat,
+  ChatFilter,
+  Message,
+  User as WhatsAppUser,
+  SendMessagePayload,
+} from "@/types/whatsapp";
 import { mergeFetchedMessages } from "@/lib/message-order";
 import {
   applyMessagePaginationUpdate,
@@ -19,8 +25,8 @@ const MESSAGE_PAGE_SIZE = 50;
 const formatTimestamp = (value: number | string | null | undefined) =>
   new Date(value ?? Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-const mapApiMessage = (m: any): Message => ({
-  id: m.id,
+export const mapApiMessage = (m: any): Message => ({
+  id: m.wa_message_id ?? m.id,
   chatId: m.chat_id,
   content: m.content || "",
   timestamp: formatTimestamp(m.message_timestamp),
@@ -57,12 +63,88 @@ const Index = ({ user }: IndexProps) => {
   const [chatToAssign, setChatToAssign] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [chatFilter, setChatFilter] = useState<ChatFilter>("all");
   const [messagePagination, setMessagePagination] = useState(() =>
     createInitialMessagePagination(MESSAGE_PAGE_SIZE)
   );
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const [isPrependingMessages, setIsPrependingMessages] = useState(false);
+  const [credentialProfile, setCredentialProfile] = useState({
+    profileName: null as string | null,
+    phoneNumber: null as string | null,
+  });
   const { toast } = useToast();
+
+  const fetchCredentialProfile = useCallback(
+    async (id: string) => {
+      if (!id) {
+        setCredentialProfile({ profileName: null, phoneNumber: null });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('credentials')
+        .select('profile_name, phone_number')
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching credential profile:', error);
+        setCredentialProfile({ profileName: null, phoneNumber: null });
+        return;
+      }
+
+      setCredentialProfile({
+        profileName: data?.profile_name ?? null,
+        phoneNumber: data?.phone_number ?? null,
+      });
+    },
+    []
+  );
+
+  const clearCredentialProfile = useCallback(() => {
+    setCredentialProfile({ profileName: null, phoneNumber: null });
+  }, []);
+
+  const usersById = useMemo(() => {
+    const map: Record<string, string> = {};
+    users.forEach((u) => {
+      map[u.id] = u.name;
+    });
+    return map;
+  }, [users]);
+
+  useEffect(() => {
+    if (!selectedChat) {
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.innerWidth < 768 && showSidebar) {
+      setShowSidebar(false);
+    }
+  }, [selectedChat, showSidebar]);
+
+  const chatsWithAssignedUsers = useMemo(() =>
+    chats.map((chat) => {
+      const assignedIds = Array.isArray(chat.assignedTo)
+        ? chat.assignedTo
+        : chat.assignedTo
+        ? [chat.assignedTo]
+        : [];
+      const assignedUserNames = assignedIds
+        .map((id) => usersById[id])
+        .filter((name): name is string => Boolean(name));
+
+      return {
+        ...chat,
+        assignedUserNames: assignedUserNames.length > 0 ? assignedUserNames : undefined,
+      };
+    }),
+  [chats, usersById]);
 
   // Fetch users on mount
   useEffect(() => {
@@ -105,6 +187,41 @@ const Index = ({ user }: IndexProps) => {
         )
         .subscribe();
 
+      const handleMessageChange = (payload: any) => {
+        console.log('Message change:', payload);
+        const mappedMessage = mapApiMessage(payload.new as any);
+        const previewContent = mappedMessage.messageType === 'text'
+          ? mappedMessage.content
+          : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
+
+        setChats(prevChats => prevChats.map(chat =>
+          chat.id === mappedMessage.chatId
+            ? { ...chat, lastMessage: previewContent, timestamp: mappedMessage.timestamp }
+            : chat
+        ));
+
+        if (selectedChat && payload.new.chat_id === selectedChat.id) {
+          let appended = false;
+          setMessages(prev => {
+            const index = prev.findIndex(message => message.id === mappedMessage.id);
+            if (index === -1) {
+              appended = true;
+              return [...prev, mappedMessage];
+            }
+            const next = [...prev];
+            next[index] = { ...next[index], ...mappedMessage };
+            return next;
+          });
+
+          if (appended) {
+            setMessagePagination(prev => ({
+              ...prev,
+              offset: prev.offset + 1,
+            }));
+          }
+        }
+      };
+
       const messagesChannel = supabase
         .channel('messages-changes')
         .on(
@@ -114,37 +231,16 @@ const Index = ({ user }: IndexProps) => {
             schema: 'public',
             table: 'messages'
           },
-          (payload) => {
-            console.log('New message:', payload);
-            const mappedMessage = mapApiMessage(payload.new as any);
-            const previewContent = mappedMessage.messageType === 'text'
-              ? mappedMessage.content
-              : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
-
-            setChats(prevChats => prevChats.map(chat =>
-              chat.id === mappedMessage.chatId
-                ? { ...chat, lastMessage: previewContent, timestamp: mappedMessage.timestamp }
-                : chat
-            ));
-
-            if (selectedChat && payload.new.chat_id === selectedChat.id) {
-              let appended = false;
-              setMessages(prev => {
-                if (prev.some(message => message.id === mappedMessage.id)) {
-                  return prev;
-                }
-                appended = true;
-                return [...prev, mappedMessage];
-              });
-
-              if (appended) {
-                setMessagePagination(prev => ({
-                  ...prev,
-                  offset: prev.offset + 1,
-                }));
-              }
-            }
-          }
+          handleMessageChange
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages'
+          },
+          handleMessageChange
         )
         .subscribe();
 
@@ -154,6 +250,36 @@ const Index = ({ user }: IndexProps) => {
       };
     }
   }, [isConnected, credentialId, selectedChat]);
+
+  const deriveAttendanceStatus = (chat: any): Chat["attendanceStatus"] => {
+    const raw =
+      (chat.status || chat.attendance_status || chat.attendanceStatus || "")
+        .toString()
+        .toLowerCase();
+
+    if (raw === "finished" || raw === "finalized" || raw === "closed") {
+      return "finished";
+    }
+
+    if (
+      raw === "in_service" ||
+      raw === "in progress" ||
+      raw === "in_progress" ||
+      raw === "active"
+    ) {
+      return "in_service";
+    }
+
+    if (raw === "waiting" || raw === "pending" || raw === "queued") {
+      return "waiting";
+    }
+
+    if (chat.assigned_to || chat.assignedTo) {
+      return "in_service";
+    }
+
+    return "waiting";
+  };
 
   const fetchChats = async () => {
     if (!credentialId) return;
@@ -171,13 +297,14 @@ const Index = ({ user }: IndexProps) => {
           id: c.id,
           name: c.name,
           lastMessage: c.last_message || '',
-          timestamp: c.last_message_timestamp 
+          timestamp: c.last_message_timestamp
             ? new Date(c.last_message_timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
             : '',
           unread: c.unread_count || 0,
           avatar: c.avatar || undefined,
           isGroup: c.is_group || false,
           assignedTo: c.assigned_to || undefined,
+          attendanceStatus: deriveAttendanceStatus(c),
         })));
       }
     } catch (error) {
@@ -260,15 +387,45 @@ const Index = ({ user }: IndexProps) => {
 
   const handleSetupComplete = (id: string) => {
     setCredentialId(id);
+    clearCredentialProfile();
   };
 
   const handleConnected = () => {
     setIsConnected(true);
+    if (credentialId) {
+      fetchCredentialProfile(credentialId);
+    }
     toast({
       title: "Conectado!",
       description: "WhatsApp conectado com sucesso",
     });
   };
+
+  const handleConnectionStatusChange = useCallback(
+    (status?: string | null) => {
+      if (!credentialId) {
+        clearCredentialProfile();
+        return;
+      }
+
+      if (status === 'connected') {
+        fetchCredentialProfile(credentialId);
+        return;
+      }
+
+      if (status === 'disconnected') {
+        clearCredentialProfile();
+        setIsConnected(false);
+      }
+    },
+    [credentialId, clearCredentialProfile, fetchCredentialProfile]
+  );
+
+  useEffect(() => {
+    if (isConnected && credentialId) {
+      fetchCredentialProfile(credentialId);
+    }
+  }, [isConnected, credentialId, fetchCredentialProfile]);
 
   const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
@@ -303,32 +460,64 @@ const Index = ({ user }: IndexProps) => {
   const handleSendMessage = async (payload: SendMessagePayload) => {
     if (!selectedChat || !credentialId) return;
 
+    const messageContent = payload.messageType === 'text'
+      ? payload.content
+      : payload.caption || `[${payload.mediaType || 'mídia'}]`;
+    const timestamp = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const fallbackId = () => {
+      if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+      }
+      return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    };
+
+    let messageId = payload.isPrivate ? fallbackId() : '';
+
     try {
-      const { data, error } = await supabase.functions.invoke('uaz-send-message', {
-        body: {
-          credentialId,
-          chatId: selectedChat.id,
+      if (payload.isPrivate) {
+        const { error } = await supabase.from('messages').insert({
+          id: messageId,
+          chat_id: selectedChat.id,
+          credential_id: credentialId,
           content: payload.content,
-          messageType: payload.messageType,
-          mediaType: payload.mediaType,
-          mediaUrl: payload.mediaUrl,
-          mediaBase64: payload.mediaBase64,
-          documentName: payload.documentName,
+          message_type: payload.messageType,
+          media_type: payload.mediaType,
+          media_url: payload.mediaUrl,
+          media_base64: payload.mediaBase64,
           caption: payload.caption,
-        }
-      });
+          document_name: payload.documentName,
+          from_me: true,
+          is_private: true,
+          message_timestamp: new Date().toISOString(),
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.functions.invoke('uaz-send-message', {
+          body: {
+            credentialId,
+            chatId: selectedChat.id,
+            content: payload.content,
+            messageType: payload.messageType,
+            mediaType: payload.mediaType,
+            mediaUrl: payload.mediaUrl,
+            mediaBase64: payload.mediaBase64,
+            documentName: payload.documentName,
+            caption: payload.caption,
+          }
+        });
 
-      const messageContent = payload.messageType === 'text'
-        ? payload.content
-        : payload.caption || `[${payload.mediaType || 'mídia'}]`;
+        if (error) throw error;
+        messageId = data.messageId;
+      }
+
+      const waMessageId = messageId || fallbackId();
 
       const newMessage: Message = {
-        id: data.messageId,
+        id: waMessageId,
         chatId: selectedChat.id,
         content: messageContent,
-        timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        timestamp,
         from: 'me',
         status: 'sent',
         messageType: payload.messageType,
@@ -345,7 +534,6 @@ const Index = ({ user }: IndexProps) => {
         offset: prev.offset + 1,
       }));
 
-      // Update chat last message
       setChats(chats.map(c =>
         c.id === selectedChat.id
           ? { ...c, lastMessage: messageContent, timestamp: newMessage.timestamp }
@@ -353,8 +541,8 @@ const Index = ({ user }: IndexProps) => {
       ));
 
       toast({
-        title: "Enviado",
-        description: "Mensagem enviada com sucesso",
+        title: payload.isPrivate ? "Salvo" : "Enviado",
+        description: payload.isPrivate ? "Mensagem privada registrada" : "Mensagem enviada com sucesso",
       });
     } catch (error) {
       console.error('Error sending message:', error);
@@ -382,9 +570,19 @@ const Index = ({ user }: IndexProps) => {
 
       if (error) throw error;
 
-      setChats(chats.map(c => 
-        c.id === chatToAssign ? { ...c, assignedTo: userId } : c
-      ));
+      setChats(prevChats =>
+        prevChats.map(c =>
+          c.id === chatToAssign
+            ? { ...c, assignedTo: userId, attendanceStatus: "in_service" }
+            : c
+        )
+      );
+
+      setSelectedChat(prevSelected =>
+        prevSelected && prevSelected.id === chatToAssign
+          ? { ...prevSelected, assignedTo: userId, attendanceStatus: "in_service" }
+          : prevSelected
+      );
 
       toast({
         title: "Atribuído",
@@ -422,7 +620,13 @@ const Index = ({ user }: IndexProps) => {
   }
 
   if (!isConnected) {
-    return <QRCodeScanner credentialId={credentialId} onConnected={handleConnected} />;
+    return (
+      <QRCodeScanner
+        credentialId={credentialId}
+        onConnected={handleConnected}
+        onStatusChange={handleConnectionStatusChange}
+      />
+    );
   }
 
   // Main WhatsApp interface
@@ -430,12 +634,17 @@ const Index = ({ user }: IndexProps) => {
     <>
       <div className="flex h-screen overflow-hidden flex-col md:flex-row">
         <ChatSidebar
-          chats={chats}
+          chats={chatsWithAssignedUsers}
           selectedChat={selectedChat}
           onSelectChat={handleSelectChat}
           onAssignChat={handleAssignChat}
           showSidebar={showSidebar}
           onToggleSidebar={() => setShowSidebar(false)}
+          activeFilter={chatFilter}
+          onFilterChange={setChatFilter}
+          currentUserId={user.id}
+          profileName={credentialProfile.profileName}
+          phoneNumber={credentialProfile.phoneNumber}
         />
         <ChatArea
           chat={selectedChat}
@@ -448,6 +657,7 @@ const Index = ({ user }: IndexProps) => {
           isPrependingMessages={isPrependingMessages}
           showSidebar={showSidebar}
           onShowSidebar={() => setShowSidebar(true)}
+          credentialId={credentialId}
         />
       </div>
 

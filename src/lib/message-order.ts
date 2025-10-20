@@ -1,7 +1,8 @@
 import type { Message } from "@/types/whatsapp";
 
 export const normalizeFetchedMessages = (messages: Message[]): Message[] => {
-  return [...messages].reverse();
+  const normalized = [...messages].reverse();
+  return normalized;
 };
 
 export const mergeFetchedMessages = (
@@ -18,12 +19,17 @@ export const mergeFetchedMessages = (
     return previous;
   }
 
+  const updates = new Map(normalized.map(message => [message.id, message]));
   const existingIds = new Set(previous.map(message => message.id));
+  const updatedPrevious = previous.map(message => {
+    const updated = updates.get(message.id);
+    return updated ? { ...message, ...updated } : message;
+  });
   const filtered = normalized.filter(message => !existingIds.has(message.id));
 
   if (!filtered.length) {
-    return previous;
+    return updatedPrevious;
   }
 
-  return [...filtered, ...previous];
+  return [...filtered, ...updatedPrevious];
 };

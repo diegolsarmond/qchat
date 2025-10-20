@@ -13,6 +13,7 @@ test("ChatArea exibe mensagens em ordem cronológica com botão no topo", () => 
     timestamp: "10:00",
     unread: 0,
     isGroup: false,
+    attendanceStatus: "waiting",
   };
 
   const messages: Message[] = [

@@ -9,6 +9,10 @@ export interface Credential {
   createdAt: Date;
 }
 
+export type ChatAttendanceStatus = "waiting" | "in_service" | "finished";
+
+export type ChatFilter = "all" | "mine" | "in_service" | "waiting" | "finished";
+
 export interface Chat {
   id: string;
   name: string;
@@ -17,7 +21,9 @@ export interface Chat {
   unread: number;
   avatar?: string;
   isGroup: boolean;
-  assignedTo?: string;
+  assignedTo?: string | string[];
+  assignedUserNames?: string[];
+  attendanceStatus: ChatAttendanceStatus;
 }
 
 export interface Message {
@@ -43,6 +49,7 @@ export interface SendMessagePayload {
   mediaBase64?: string;
   documentName?: string;
   caption?: string;
+  isPrivate?: boolean;
 }
 
 export interface User {
