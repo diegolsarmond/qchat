@@ -146,6 +146,7 @@ const inferAudioMimeType = (message: Message) => {
 };
 
 type AudioSource = { url: string; shouldRevoke: boolean };
+type CachedAudioSource = { source: AudioSource; signature: string };
 
 const resolveAudioSource = (message: Message): AudioSource | null => {
   if (message.mediaUrl) {
@@ -347,20 +348,60 @@ export const ChatArea = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrivateRef = useRef(isPrivate);
   const orderedMessages = useMemo(() => [...messages], [messages]);
-  const audioSources = useMemo(() => {
-    const map = new Map<string, AudioSource>();
+  const audioSourceCacheRef = useRef<Map<string, CachedAudioSource>>(new Map());
+  const { audioSources, urlsToRevoke } = useMemo(() => {
+    const previousCache = audioSourceCacheRef.current;
+    const nextCache = new Map<string, CachedAudioSource>();
+    const urlsToRevoke: string[] = [];
+    const remainingPreviousIds = new Set(previousCache.keys());
+
     orderedMessages.forEach((message) => {
-      if (
+      remainingPreviousIds.delete(message.id);
+      const isAudioMessage =
         message.messageType === "media" &&
-        (message.mediaType === "audio" || message.mediaType === "ptt")
-      ) {
-        const source = resolveAudioSource(message);
-        if (source) {
-          map.set(message.id, source);
+        (message.mediaType === "audio" || message.mediaType === "ptt");
+
+      if (!isAudioMessage) {
+        const cached = previousCache.get(message.id);
+        if (cached?.source.shouldRevoke) {
+          urlsToRevoke.push(cached.source.url);
         }
+        return;
+      }
+
+      const signature = message.mediaUrl ?? message.mediaBase64 ?? "";
+      const cached = previousCache.get(message.id);
+
+      if (cached && cached.signature === signature) {
+        nextCache.set(message.id, cached);
+        return;
+      }
+
+      if (cached?.source.shouldRevoke) {
+        urlsToRevoke.push(cached.source.url);
+      }
+
+      const source = resolveAudioSource(message);
+      if (source) {
+        nextCache.set(message.id, { source, signature });
       }
     });
-    return map;
+
+    remainingPreviousIds.forEach((id) => {
+      const cached = previousCache.get(id);
+      if (cached?.source.shouldRevoke) {
+        urlsToRevoke.push(cached.source.url);
+      }
+    });
+
+    audioSourceCacheRef.current = nextCache;
+
+    return {
+      audioSources: new Map(
+        Array.from(nextCache.entries(), ([id, { source }]) => [id, source]),
+      ),
+      urlsToRevoke,
+    };
   }, [orderedMessages]);
 
   useEffect(() => {
@@ -372,21 +413,26 @@ export const ChatArea = ({
   }, [isPrivate]);
 
   useEffect(() => {
-    const urls: string[] = [];
-    audioSources.forEach((source) => {
-      if (source.shouldRevoke) {
-        urls.push(source.url);
-      }
+    if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
+      return;
+    }
+    urlsToRevoke.forEach((url) => {
+      URL.revokeObjectURL(url);
     });
+  }, [urlsToRevoke]);
+
+  useEffect(() => {
     return () => {
       if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
         return;
       }
-      urls.forEach((url) => {
-        URL.revokeObjectURL(url);
+      audioSourceCacheRef.current.forEach(({ source }) => {
+        if (source.shouldRevoke) {
+          URL.revokeObjectURL(source.url);
+        }
       });
     };
-  }, [audioSources]);
+  }, []);
 
   if (!recorderRef.current) {
     recorderRef.current = createAudioRecorder({
