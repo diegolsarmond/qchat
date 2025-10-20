@@ -114,6 +114,9 @@ export const createAudioRecorder = ({
     mediaRecorderRef.current = null;
   };
 
+  const cancelPendingStartRef: { current: boolean } = { current: false };
+  const hasPendingStartRef: { current: boolean } = { current: false };
+
   const startRecording = async () => {
     if (
       typeof navigator === "undefined" ||
@@ -124,7 +127,14 @@ export const createAudioRecorder = ({
     }
 
     try {
+      cancelPendingStartRef.current = false;
+      hasPendingStartRef.current = true;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      hasPendingStartRef.current = false;
+      if (cancelPendingStartRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const recorder = new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
       mediaStreamRef.current = stream;
@@ -173,6 +183,8 @@ export const createAudioRecorder = ({
       recordingChunksRef.current = [];
       setChunks([]);
       setIsRecording(false);
+    } finally {
+      hasPendingStartRef.current = false;
     }
   };
 
@@ -186,6 +198,9 @@ export const createAudioRecorder = ({
 
   const cancelRecording = () => {
     shouldSendRecordingRef.current = false;
+    if (hasPendingStartRef.current) {
+      cancelPendingStartRef.current = true;
+    }
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state === "recording") {
       recorder.stop();
@@ -199,6 +214,8 @@ export const createAudioRecorder = ({
 
   const dispose = () => {
     shouldSendRecordingRef.current = false;
+    cancelPendingStartRef.current = false;
+    hasPendingStartRef.current = false;
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== "inactive") {
       recorder.stop();
