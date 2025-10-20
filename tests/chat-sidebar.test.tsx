@@ -14,7 +14,7 @@ type ChatSidebarModule = {
 let navigateHandler: (path: string) => void = () => {};
 let signOutHandler: () => Promise<void> = async () => {};
 
-const loadChatSidebar = () => {
+export const loadChatSidebar = () => {
   const modulePath = fileURLToPath(new URL("../src/components/ChatSidebar.tsx", import.meta.url));
   const source = readFileSync(modulePath, "utf-8");
   const { outputText } = ts.transpileModule(source, {
@@ -106,7 +106,7 @@ const collectChildren = (node: any) => {
   return Array.isArray(children) ? children : [children];
 };
 
-const elementContainsText = (node: any, text: string): boolean => {
+export const elementContainsText = (node: any, text: string): boolean => {
   if (Array.isArray(node)) {
     return node.some(child => elementContainsText(child, text));
   }
@@ -282,6 +282,16 @@ test("filterChatsByAttendance filtra conversas pelo status", () => {
       assignedTo: "agent-3",
       attendanceStatus: "finished",
     },
+    {
+      id: "5",
+      name: "Atendimento compartilhado",
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      isGroup: false,
+      assignedTo: ["agent-1", "agent-3"],
+      attendanceStatus: "in_service",
+    },
   ];
 
   const mine = filterChatsByAttendance(chats, "mine", "agent-1").map(chat => chat.id);
@@ -290,9 +300,9 @@ test("filterChatsByAttendance filtra conversas pelo status", () => {
   const finished = filterChatsByAttendance(chats, "finished", "agent-1").map(chat => chat.id);
   const all = filterChatsByAttendance(chats, "all", "agent-1").map(chat => chat.id);
 
-  assert.deepEqual(mine, ["1"]);
-  assert.deepEqual(inService.sort(), ["1", "2"].sort());
+  assert.deepEqual(mine.sort(), ["1", "5"].sort());
+  assert.deepEqual(inService.sort(), ["1", "2", "5"].sort());
   assert.deepEqual(waiting, ["3"]);
   assert.deepEqual(finished, ["4"]);
-  assert.deepEqual(all.sort(), ["1", "2", "3", "4"].sort());
+  assert.deepEqual(all.sort(), ["1", "2", "3", "4", "5"].sort());
 });
