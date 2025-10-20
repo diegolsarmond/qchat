@@ -472,9 +472,19 @@ const Index = ({ user }: IndexProps) => {
 
       if (error) throw error;
 
-      setChats(chats.map(c =>
-        c.id === chatToAssign ? { ...c, assignedTo: userId } : c
-      ));
+      setChats(prevChats =>
+        prevChats.map(c =>
+          c.id === chatToAssign
+            ? { ...c, assignedTo: userId, attendanceStatus: "in_service" }
+            : c
+        )
+      );
+
+      setSelectedChat(prevSelected =>
+        prevSelected && prevSelected.id === chatToAssign
+          ? { ...prevSelected, assignedTo: userId, attendanceStatus: "in_service" }
+          : prevSelected
+      );
 
       toast({
         title: "Atribuído",
