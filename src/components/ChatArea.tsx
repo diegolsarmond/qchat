@@ -19,8 +19,8 @@ import {
   X,
   Lock,
   Unlock,
-  List
-  UserPlus
+  List,
+  UserPlus,
   MapPin,
   Download
 } from "lucide-react";
