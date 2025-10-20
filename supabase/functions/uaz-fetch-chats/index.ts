@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ensureCredentialOwnership } from "../_shared/credential-guard.ts";
+import { persistChats } from "./upsert-chats.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -145,26 +146,15 @@ serve(async (req) => {
     console.log('[UAZ Fetch Chats] Found chats:', chats.length);
 
     // Upsert chats to database
-    for (const chat of chats) {
-      try {
-        await supabaseClient
-          .from('chats')
-          .upsert({
-            credential_id: credentialId,
-            user_id: authData.user.id,
-            wa_chat_id: chat.wa_chatid,
-            name: chat.name || chat.wa_name || chat.wa_contactName || 'Unknown',
-            last_message: chat.wa_lastMessageTextVote || '',
-            last_message_timestamp: chat.wa_lastMsgTimestamp || 0,
-            unread_count: chat.wa_unreadCount || 0,
-            avatar: chat.image || '',
-            is_group: chat.wa_isGroup || false,
-          }, {
-            onConflict: 'credential_id,wa_chat_id'
-          });
-      } catch (upsertError) {
-        console.error('[UAZ Fetch Chats] Failed to upsert chat:', chat.wa_chatid, upsertError);
-      }
+    try {
+      await persistChats({
+        supabaseClient,
+        credentialId,
+        userId: authData.user.id,
+        chats,
+      });
+    } catch (upsertError) {
+      console.error('[UAZ Fetch Chats] Failed to upsert chats:', upsertError);
     }
 
     // Fetch updated chats from database with pagination
