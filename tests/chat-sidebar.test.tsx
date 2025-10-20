@@ -195,3 +195,31 @@ test("ChatSidebar chama signOut e redireciona ao clicar em Sair", async () => {
   signOutHandler = async () => {};
   navigateHandler = () => {};
 });
+
+test("ChatSidebar exibe o nome do responsável quando o chat está atribuído", () => {
+  const ChatSidebar = loadChatSidebar();
+  const element = ChatSidebar({
+    chats: [
+      {
+        id: "1",
+        name: "Contato",
+        lastMessage: "Olá",
+        timestamp: "10:00",
+        unread: 0,
+        isGroup: false,
+        assignedTo: "user-1",
+        assignedUserNames: ["Maria"],
+      },
+    ],
+    selectedChat: null,
+    onSelectChat: () => {},
+    onAssignChat: () => {},
+    showSidebar: true,
+    onToggleSidebar: () => {},
+  });
+
+  assert.ok(
+    elementContainsText(element, "Maria"),
+    "Nome do responsável não foi renderizado"
+  );
+});

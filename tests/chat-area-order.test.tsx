@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ChatArea } from "../src/components/ChatArea";
 import type { Chat, Message } from "../src/types/whatsapp";
 
-test("ChatArea exibe mensagens mais recentes primeiro", () => {
+test("ChatArea exibe mensagens em ordem cronológica com botão no topo", () => {
   const chat: Chat = {
     id: "chat-ordem",
     name: "Cliente",
@@ -41,7 +41,7 @@ test("ChatArea exibe mensagens mais recentes primeiro", () => {
       onSendMessage={() => {}}
       onAssignChat={() => {}}
       onLoadMoreMessages={() => {}}
-      hasMoreMessages={false}
+      hasMoreMessages
       isLoadingMoreMessages={false}
       isPrependingMessages={false}
       showSidebar
@@ -49,9 +49,11 @@ test("ChatArea exibe mensagens mais recentes primeiro", () => {
     />
   );
 
+  const indexBotao = html.indexOf("Carregar mensagens anteriores");
   const indexRecente = html.indexOf("Mensagem recente");
   const indexAntiga = html.indexOf("Mensagem antiga");
 
-  assert.ok(indexRecente >= 0 && indexAntiga >= 0);
-  assert.ok(indexRecente < indexAntiga);
+  assert.ok(indexBotao >= 0 && indexAntiga >= 0 && indexRecente >= 0);
+  assert.ok(indexBotao < indexAntiga);
+  assert.ok(indexAntiga < indexRecente);
 });
