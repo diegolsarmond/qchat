@@ -36,6 +36,13 @@ serve(async (req) => {
       );
     }
 
+    if (!credential.user_id) {
+      return new Response(
+        JSON.stringify({ error: 'Credential missing owner' }),
+        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log('[UAZ Get QR] Fetching instance info from:', credential.subdomain);
 
     // Get instance status from UAZ API
@@ -80,7 +87,8 @@ serve(async (req) => {
     const { error: updateError } = await supabaseClient
       .from('credentials')
       .update(updateData)
-      .eq('id', credentialId);
+      .eq('id', credentialId)
+      .eq('user_id', credential.user_id);
 
     if (updateError) {
       console.error('[UAZ Get QR] Failed to update credential:', updateError);

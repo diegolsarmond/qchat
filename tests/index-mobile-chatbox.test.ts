@@ -7,49 +7,59 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const createReactStub = () => {
-  const state: any[] = [];
+  const state: unknown[] = [];
   let hookIndex = 0;
+  const effects: Array<() => void> = [];
 
-  const getInitialValue = (value: any) => (typeof value === "function" ? value() : value);
+  const getInitialValue = (value: unknown) => (typeof value === "function" ? (value as () => unknown)() : value);
 
-  const react: any = {
-    useState(initial: any) {
+  const react = {
+    useState(initial: unknown) {
       const index = hookIndex++;
       if (state.length <= index) {
         state.push(getInitialValue(initial));
       }
-      const setState = (value: any) => {
-        state[index] = typeof value === "function" ? value(state[index]) : value;
+      const setState = (value: unknown) => {
+        state[index] = typeof value === "function" ? (value as (previous: unknown) => unknown)(state[index]) : value;
       };
-      return [state[index], setState];
+      return [state[index], setState] as const;
     },
-    useEffect() {},
-    useMemo(factory: () => any) {
+    useEffect(effect: () => void) {
+      effects.push(effect);
+    },
+    useMemo<T>(factory: () => T) {
       return factory();
     },
-  };
+  } as const;
 
-  react.__render = (Component: any, props: any) => {
+  const render = <P,>(Component: (props: P) => unknown, props: P) => {
     hookIndex = 0;
-    return Component(props);
+    const result = Component(props);
+    while (effects.length > 0) {
+      const effect = effects.shift();
+      effect?.();
+    }
+    return result;
   };
 
-  react.__getState = () => state;
-
-  return react;
+  return {
+    ...react,
+    __render: render,
+    __getState: () => state,
+  };
 };
 
 const createStubComponent = (type: string) => {
-  const component: any = (props: any) => {
+  const component = (props: unknown) => {
     component.lastProps = props;
-    component.callCount = (component.callCount || 0) + 1;
+    component.callCount = (component.callCount ?? 0) + 1;
     return { type, props };
   };
   component.callCount = 0;
   return component;
 };
 
-const loadIndexPage = (reactStub: any, overrides: any = {}) => {
+const loadIndexPage = (reactStub: ReturnType<typeof createReactStub>, overrides: Record<string, unknown> = {}) => {
   const modulePath = fileURLToPath(new URL("../src/pages/Index.tsx", import.meta.url));
   const source = readFileSync(modulePath, "utf-8");
   const { outputText } = ts.transpileModule(source, {
@@ -62,7 +72,7 @@ const loadIndexPage = (reactStub: any, overrides: any = {}) => {
     fileName: modulePath,
   });
 
-  const module: any = { exports: {} };
+  const module = { exports: {} as unknown };
   const requireFn = createRequire(modulePath);
 
   const credentialSetup = overrides.credentialSetup ?? createStubComponent("CredentialSetup");
@@ -76,8 +86,8 @@ const loadIndexPage = (reactStub: any, overrides: any = {}) => {
       invoke: async () => ({ data: {}, error: null }),
     },
     from: () => ({
-      select: async () => ({ data: [], error: null }),
-      update: () => ({ eq: async () => ({ error: null }) }),
+      select: () => Promise.resolve({ data: [], error: null }),
+      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
     }),
     channel: () => ({
       on() {
@@ -120,16 +130,20 @@ const loadIndexPage = (reactStub: any, overrides: any = {}) => {
     }
     if (specifier === "@/lib/message-order") {
       return {
-        mergeFetchedMessages: (previous: any[], fetched: any[], reset: boolean) =>
+        mergeFetchedMessages: (previous: unknown[], fetched: unknown[], reset?: boolean) =>
           reset ? [...fetched] : [...previous, ...fetched],
       };
     }
     if (specifier === "@/lib/message-pagination") {
       return {
         createInitialMessagePagination: (limit: number) => ({ limit, offset: 0, hasMore: false }),
-        applyMessagePaginationUpdate: (prev: any, received: number, options: any) => ({
+        applyMessagePaginationUpdate: (
+          prev: { limit: number; offset: number; hasMore: boolean },
+          receivedCount: number,
+          options: { limit?: number; reset?: boolean; hasMore: boolean },
+        ) => ({
           limit: options.limit ?? prev.limit,
-          offset: options.reset ? Math.max(0, received) : prev.offset + Math.max(0, received),
+          offset: options.reset ? Math.max(0, receivedCount) : prev.offset + Math.max(0, receivedCount),
           hasMore: options.hasMore,
         }),
       };
@@ -152,16 +166,16 @@ const loadIndexPage = (reactStub: any, overrides: any = {}) => {
 
   new vm.Script(outputText, { filename: modulePath }).runInContext(context);
 
-  return { module: module.exports, stubs: { credentialSetup, qrCodeScanner, chatSidebar, chatArea } };
+  return { module: module.exports as { default: (props: unknown) => unknown } };
 };
 
-test("mensagens privadas registram apenas no banco", () => {
+test("Index mantém a conversa visível no mobile após restaurar seleção", () => {
   const storage = (() => {
     const map = new Map<string, string>();
     return {
       getItem: (key: string) => (map.has(key) ? map.get(key)! : null),
       setItem: (key: string, value: string) => {
-        map.set(key, String(value));
+        map.set(key, value);
       },
       removeItem: (key: string) => {
         map.delete(key);
@@ -175,96 +189,34 @@ test("mensagens privadas registram apenas no banco", () => {
   const originalWindow = global.window;
   const originalLocalStorage = global.localStorage;
 
-  global.window = { localStorage: storage, innerWidth: 1024 } as any;
-  global.localStorage = storage as any;
-
-  storage.setItem("activeCredentialId", "cred-privado");
+  global.window = { localStorage: storage, innerWidth: 360 } as unknown as Window & typeof globalThis;
+  global.localStorage = storage as unknown as Storage;
 
   try {
     const reactStub = createReactStub();
-    const insertCalls: any[] = [];
-    const invokeCalls: any[] = [];
-
-    const supabaseStub = {
-      functions: {
-        invoke: async (...args: any[]) => {
-          invokeCalls.push(args);
-          return { data: { messageId: "remote" }, error: null };
-        },
-      },
-      from: (table: string) => {
-        if (table === "messages") {
-          return {
-            insert: async (payload: any) => {
-              insertCalls.push(payload);
-              return { data: null, error: null };
-            },
-          };
-        }
-        if (table === "chats") {
-          return {
-            update: () => ({
-              eq: async () => ({ error: null }),
-            }),
-          };
-        }
-        return {
-          select: async () => ({ data: [], error: null }),
-        };
-      },
-      channel: () => ({
-        on() {
-          return this;
-        },
-        subscribe() {
-          return this;
-        },
-      }),
-      removeChannel() {},
-    };
-
     const chatSidebar = createStubComponent("ChatSidebar");
     const chatArea = createStubComponent("ChatArea");
 
-    const { module, stubs } = loadIndexPage(reactStub, {
-      chatSidebar,
-      chatArea,
-      supabase: supabaseStub,
-      toast: () => {},
-    });
+    const { module } = loadIndexPage(reactStub, { chatSidebar, chatArea });
+    const Index = module.default ?? (module as unknown as (props: unknown) => unknown);
 
-    const Index = module.default ?? module;
+    reactStub.__render(Index, { user: { id: "user-1" } });
 
-    const firstRender = reactStub.__render(Index, { user: { id: "user" } });
-    assert.equal(firstRender.type, stubs.qrCodeScanner);
-
-    stubs.qrCodeScanner.lastProps.onConnected();
-    reactStub.__render(Index, { user: { id: "user" } });
-
-    stubs.chatSidebar.lastProps.onSelectChat({
+    const state = reactStub.__getState();
+    state[2] = {
       id: "chat-1",
       name: "Cliente",
+      avatar: "",
       lastMessage: "",
       timestamp: "",
       unread: 0,
-      isGroup: false,
-    });
-
-    reactStub.__render(Index, { user: { id: "user" } });
-
-    const payload = {
-      content: "Mensagem privada",
-      messageType: "text" as const,
-      isPrivate: true,
+      assignedTo: null,
+      attendanceStatus: "waiting",
     };
+    state[9] = true;
 
-    stubs.chatArea.lastProps.onSendMessage(payload);
-
-    assert.equal(invokeCalls.length, 0);
-    assert.equal(insertCalls.length, 1);
-    assert.equal(insertCalls[0].content, "Mensagem privada");
-    assert.equal(insertCalls[0].is_private, true);
-    assert.equal(insertCalls[0].user_id, "user");
+    reactStub.__render(Index, { user: { id: "user-1" } });
+    assert.equal(reactStub.__getState()[9], false);
   } finally {
     global.window = originalWindow;
     global.localStorage = originalLocalStorage;

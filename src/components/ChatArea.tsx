@@ -17,7 +17,8 @@ import {
   ArrowLeft,
   X,
   Lock,
-  Unlock
+  Unlock,
+  Download
 } from "lucide-react";
 import { Chat, Message, SendMessagePayload } from "@/types/whatsapp";
 import {
@@ -26,6 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { supabase } from "@/integrations/supabase/client";
 
 type MediaOrigin = 'url' | 'base64';
 
@@ -66,6 +68,124 @@ interface MediaPromptValues {
   caption?: string;
   documentName?: string;
 }
+
+const getGlobalUrl = () => {
+  if (typeof URL !== "undefined") {
+    return URL;
+  }
+  if (typeof globalThis !== "undefined" && (globalThis as any).URL) {
+    return (globalThis as any).URL as typeof URL;
+  }
+  return undefined;
+};
+
+const createObjectUrl = (blob: Blob) => {
+  const target = getGlobalUrl();
+  if (target && typeof target.createObjectURL === "function") {
+    return target.createObjectURL(blob);
+  }
+  return "";
+};
+
+const revokeObjectUrl = (value: string) => {
+  if (!value) return;
+  const target = getGlobalUrl();
+  if (target && typeof target.revokeObjectURL === "function") {
+    target.revokeObjectURL(value);
+  }
+};
+
+const decodeBase64ToUint8Array = (value: string) => {
+  const globalAtob =
+    typeof atob === "function"
+      ? atob
+      : typeof globalThis !== "undefined" && typeof (globalThis as any).atob === "function"
+      ? (globalThis as any).atob as (input: string) => string
+      : undefined;
+
+  if (globalAtob) {
+    const binary = globalAtob(value);
+    const length = binary.length;
+    const bytes = new Uint8Array(length);
+    for (let index = 0; index < length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  }
+
+  if (typeof globalThis !== "undefined" && typeof (globalThis as any).Buffer === "function") {
+    const buffer = (globalThis as any).Buffer.from(value, "base64");
+    return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  }
+
+  return new Uint8Array();
+};
+
+const getMimeTypeForMessage = (message: Message) => {
+  const mediaType = message.mediaType?.toLowerCase() ?? "";
+  if (mediaType === "image" || mediaType === "photo") {
+    return "image/jpeg";
+  }
+  if (mediaType === "video") {
+    return "video/mp4";
+  }
+  if (mediaType === "audio" || mediaType === "ptt" || mediaType === "voice") {
+    return "audio/ogg";
+  }
+  if (mediaType === "document" && message.documentName) {
+    const lowerName = message.documentName.toLowerCase();
+    if (lowerName.endsWith(".pdf")) return "application/pdf";
+    if (lowerName.endsWith(".doc")) return "application/msword";
+    if (lowerName.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    if (lowerName.endsWith(".xls")) return "application/vnd.ms-excel";
+    if (lowerName.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    if (lowerName.endsWith(".ppt")) return "application/vnd.ms-powerpoint";
+    if (lowerName.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    if (lowerName.endsWith(".txt")) return "text/plain";
+    if (lowerName.endsWith(".json")) return "application/json";
+  }
+  if (mediaType === "document") {
+    return "application/octet-stream";
+  }
+  return "application/octet-stream";
+};
+
+const shouldUseAuthenticatedDownload = (url: string) => /uazapi\.com/i.test(url);
+
+export const requestAuthenticatedMedia = async ({
+  credentialId,
+  url,
+}: {
+  credentialId: string;
+  url: string;
+}) => {
+  const { data, error, response } = await supabase.functions.invoke<Blob>("uaz-download-media", {
+    body: { credentialId, url },
+  });
+
+  if (error || !data) {
+    return null;
+  }
+
+  const contentType = response?.headers.get("x-content-type") ?? data.type ?? null;
+  const fileName = response?.headers.get("x-file-name") ?? null;
+  const blob =
+    contentType && data instanceof Blob && data.type !== contentType
+      ? data.slice(0, data.size, contentType)
+      : data instanceof Blob
+      ? data
+      : new Blob([data], { type: contentType ?? undefined });
+
+  return { blob, contentType, fileName };
+};
+
+type ResolvedMediaSource = {
+  url: string;
+  downloadUrl: string;
+  contentType?: string | null;
+  fileName?: string | null;
+  revokable?: boolean;
+};
 
 export const buildMediaMessagePayload = (values: MediaPromptValues): SendMessagePayload => {
   const mediaType = values.mediaType.trim();
@@ -115,6 +235,61 @@ const blobToBase64 = (blob: Blob) =>
     reader.onerror = () => reject(new Error("Failed to read blob"));
     reader.readAsDataURL(blob);
   });
+
+const base64ToUint8Array = (value: string) => {
+  if (typeof atob === "function") {
+    const binary = atob(value);
+    const length = binary.length;
+    const bytes = new Uint8Array(length);
+    for (let index = 0; index < length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  }
+  const bufferCtor = (globalThis as { Buffer?: { from: (data: string, encoding: string) => Uint8Array } }).Buffer;
+  if (bufferCtor) {
+    return bufferCtor.from(value, "base64");
+  }
+  return new Uint8Array();
+};
+
+const inferAudioMimeType = (message: Message) => {
+  const name = message.documentName?.toLowerCase() ?? "";
+  if (name.endsWith(".webm")) return "audio/webm";
+  if (name.endsWith(".mp3")) return "audio/mpeg";
+  if (name.endsWith(".wav")) return "audio/wav";
+  if (name.endsWith(".m4a")) return "audio/mp4";
+  if (name.endsWith(".ogg")) return "audio/ogg";
+  if (message.mediaType === "ptt") return "audio/ogg";
+  return "audio/ogg";
+};
+
+type AudioSource = { url: string; shouldRevoke: boolean };
+
+const resolveAudioSource = (message: Message): AudioSource | null => {
+  if (message.mediaUrl) {
+    return { url: message.mediaUrl, shouldRevoke: false };
+  }
+  if (!message.mediaBase64) {
+    return null;
+  }
+  const base64 = message.mediaBase64.includes(",")
+    ? message.mediaBase64.split(",").pop() ?? ""
+    : message.mediaBase64;
+  if (!base64) {
+    return null;
+  }
+  const bytes = base64ToUint8Array(base64);
+  if (!bytes.length) {
+    return null;
+  }
+  const blob = new Blob([bytes], { type: inferAudioMimeType(message) });
+  if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+    return { url: `data:${blob.type};base64,${base64}`, shouldRevoke: false };
+  }
+  const url = URL.createObjectURL(blob);
+  return { url, shouldRevoke: true };
+};
 
 interface AudioRecorderOptions {
   getOnSendMessage: () => (payload: SendMessagePayload) => void;
@@ -266,6 +441,7 @@ interface ChatAreaProps {
   isPrependingMessages?: boolean;
   showSidebar: boolean;
   onShowSidebar: () => void;
+  credentialId?: string | null;
 }
 
 export const ChatArea = ({
@@ -279,6 +455,7 @@ export const ChatArea = ({
   isPrependingMessages = false,
   showSidebar,
   onShowSidebar,
+  credentialId,
 }: ChatAreaProps) => {
   const [messageText, setMessageText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -291,6 +468,7 @@ export const ChatArea = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrivateRef = useRef(isPrivate);
   const orderedMessages = useMemo(() => [...messages], [messages]);
+  const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
 
   useEffect(() => {
     onSendMessageRef.current = onSendMessage;
@@ -299,6 +477,23 @@ export const ChatArea = ({
   useEffect(() => {
     isPrivateRef.current = isPrivate;
   }, [isPrivate]);
+
+  useEffect(() => {
+    const urls: string[] = [];
+    audioSources.forEach((source) => {
+      if (source.shouldRevoke) {
+        urls.push(source.url);
+      }
+    });
+    return () => {
+      if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
+        return;
+      }
+      urls.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+    };
+  }, [audioSources]);
 
   if (!recorderRef.current) {
     recorderRef.current = createAudioRecorder({
@@ -314,6 +509,118 @@ export const ChatArea = ({
       recorderRef.current?.dispose();
     };
   }, []);
+
+  const urlMediaSources = useMemo(() => {
+    const map: Record<string, ResolvedMediaSource> = {};
+    orderedMessages.forEach((message) => {
+      if (message.messageType !== "media") {
+        return;
+      }
+      if (message.mediaUrl && !shouldUseAuthenticatedDownload(message.mediaUrl)) {
+        map[message.id] = {
+          url: message.mediaUrl,
+          downloadUrl: message.mediaUrl,
+          contentType: null,
+          fileName: message.documentName ?? null,
+        };
+      }
+    });
+    return map;
+  }, [orderedMessages]);
+
+  const base64MediaSources = useMemo(() => {
+    const map: Record<string, ResolvedMediaSource> = {};
+    orderedMessages.forEach((message) => {
+      if (message.messageType !== "media") {
+        return;
+      }
+      if (!message.mediaUrl && message.mediaBase64) {
+        const bytes = decodeBase64ToUint8Array(message.mediaBase64);
+        if (!bytes.length) {
+          return;
+        }
+        const mimeType = getMimeTypeForMessage(message);
+        const blob = new Blob([bytes], { type: mimeType });
+        const objectUrl = createObjectUrl(blob);
+        if (!objectUrl) {
+          return;
+        }
+        map[message.id] = {
+          url: objectUrl,
+          downloadUrl: objectUrl,
+          contentType: mimeType,
+          fileName: message.documentName ?? null,
+          revokable: true,
+        };
+      }
+    });
+    return map;
+  }, [orderedMessages]);
+
+  useEffect(() => {
+    const urls = Object.values(base64MediaSources).map((entry) => entry.url);
+    return () => {
+      urls.forEach((url) => revokeObjectUrl(url));
+    };
+  }, [base64MediaSources]);
+
+  useEffect(() => {
+    const requiresAuthenticated = orderedMessages.filter(
+      (message) => message.messageType === "media" && message.mediaUrl && shouldUseAuthenticatedDownload(message.mediaUrl)
+    );
+
+    if (!requiresAuthenticated.length || !credentialId) {
+      setSecuredMediaSources({});
+      return;
+    }
+
+    let active = true;
+    const urlsToRevoke: string[] = [];
+
+    const resolve = async () => {
+      const resolved: Record<string, ResolvedMediaSource> = {};
+
+      for (const message of requiresAuthenticated) {
+        if (!message.mediaUrl) {
+          continue;
+        }
+        try {
+          const response = await requestAuthenticatedMedia({ credentialId, url: message.mediaUrl });
+          if (!active || !response) {
+            continue;
+          }
+          const objectUrl = createObjectUrl(response.blob);
+          if (!objectUrl) {
+            continue;
+          }
+          resolved[message.id] = {
+            url: objectUrl,
+            downloadUrl: objectUrl,
+            contentType: response.contentType,
+            fileName: response.fileName ?? message.documentName ?? null,
+            revokable: true,
+          };
+          urlsToRevoke.push(objectUrl);
+        } catch {
+        }
+      }
+
+      if (active) {
+        setSecuredMediaSources(resolved);
+      }
+    };
+
+    resolve();
+
+    return () => {
+      active = false;
+      urlsToRevoke.forEach((url) => revokeObjectUrl(url));
+    };
+  }, [orderedMessages, credentialId]);
+
+  const resolvedMediaSources = useMemo(() => {
+    return { ...urlMediaSources, ...base64MediaSources, ...securedMediaSources };
+  }, [urlMediaSources, base64MediaSources, securedMediaSources]);
 
   useEffect(() => {
     if (!isPrependingMessages) {
@@ -381,6 +688,81 @@ export const ChatArea = ({
     } finally {
       target.value = "";
     }
+  };
+
+  const renderMediaDownload = (
+    message: Message,
+    source: ResolvedMediaSource | undefined,
+  ) => {
+    if (!source?.downloadUrl) {
+      return null;
+    }
+    const downloadName = message.documentName ?? source.fileName ?? "media";
+    return (
+      <a
+        href={source.downloadUrl}
+        download={downloadName}
+        className="text-xs text-primary underline"
+        data-testid={`chat-media-download-${message.id}`}
+      >
+        {`Baixar ${downloadName}`}
+      </a>
+    );
+  };
+
+  const renderMessageContent = (message: Message) => {
+    if (message.messageType !== "media") {
+      return <p className="text-sm break-words">{message.content}</p>;
+    }
+
+    const source = resolvedMediaSources[message.id];
+    const caption = message.caption || (message.content.startsWith("[") ? "" : message.content);
+    const fileName = message.documentName ?? source?.fileName ?? null;
+    const downloadLabel = renderMediaDownload(message, source);
+    const type = message.mediaType?.toLowerCase() ?? "";
+
+    if (type === "image" || type === "photo") {
+      return (
+        <div className="space-y-2">
+          {source?.url ? (
+            <img src={source.url} alt={caption || fileName || "imagem"} className="rounded-md max-w-full" />
+          ) : null}
+          {fileName ? <p className="text-xs text-muted-foreground break-words">{fileName}</p> : null}
+          {caption ? <p className="text-sm break-words">{caption}</p> : null}
+          {downloadLabel}
+        </div>
+      );
+    }
+
+    if (type === "video") {
+      return (
+        <div className="space-y-2">
+          <video controls preload="metadata" className="rounded-md max-w-full" src={source?.url}></video>
+          {caption ? <p className="text-sm break-words">{caption}</p> : null}
+          {fileName ? <p className="text-xs text-muted-foreground break-words">{fileName}</p> : null}
+          {downloadLabel}
+        </div>
+      );
+    }
+
+    if (type === "audio" || type === "ptt" || type === "voice") {
+      return (
+        <div className="space-y-2">
+          <audio controls preload="metadata" src={source?.url}></audio>
+          {caption ? <p className="text-sm break-words">{caption}</p> : null}
+          {fileName ? <p className="text-xs text-muted-foreground break-words">{fileName}</p> : null}
+          {downloadLabel}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        {fileName ? <p className="text-sm font-medium break-words">{fileName}</p> : null}
+        {caption ? <p className="text-sm break-words">{caption}</p> : null}
+        {downloadLabel}
+      </div>
+    );
   };
 
   const getInitials = (name: string) => {
@@ -516,21 +898,25 @@ export const ChatArea = ({
               </Button>
             </div>
           )}
-          {orderedMessages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.from === 'me' ? 'justify-end' : 'justify-start'}`}
-            >
+          {orderedMessages.map((message) => {
+            const isAudioMessage =
+              message.messageType === "media" &&
+              (message.mediaType === "audio" || message.mediaType === "ptt");
+            const audioSource = isAudioMessage ? audioSources.get(message.id) : undefined;
+            const fallbackLabel = `[${message.mediaType === "ptt" ? "ptt" : "audio"}]`;
+            const caption = message.caption?.trim() || message.content?.trim() || fallbackLabel;
+
+            return (
               <div
-                className={`
+              className={`
                   max-w-[65%] rounded-lg p-2 px-3 shadow-sm
-                  ${message.from === 'me' 
-                    ? 'bg-[hsl(var(--whatsapp-message-out))]' 
+                  ${message.from === 'me'
+                    ? 'bg-[hsl(var(--whatsapp-message-out))]'
                     : 'bg-[hsl(var(--whatsapp-message-in))]'
                   }
                 `}
               >
-                <p className="text-sm break-words">{message.content}</p>
+                {renderMessageContent(message)}
                 <div className="flex items-center justify-end gap-1 mt-1">
                   <span className="text-xs text-muted-foreground">
                     {message.timestamp}
@@ -538,8 +924,8 @@ export const ChatArea = ({
                   {message.from === 'me' && <MessageStatus status={message.status} />}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>

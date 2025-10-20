@@ -6,7 +6,15 @@ import { createRequire } from "node:module";
 import vm from "node:vm";
 import ts from "typescript";
 
-const createReactStub = () => {
+type ReactStub = {
+  useState: <T>(initial: T | (() => T)) => [T, (value: T | ((prev: T) => T)) => void];
+  useEffect: (callback: () => void | (() => void)) => void;
+  useMemo: <T>(factory: () => T) => T;
+  __render: (Component: any, props: any) => any;
+  __getState: () => any[];
+};
+
+const createReactStub = (): ReactStub => {
   const state: any[] = [];
   let hookIndex = 0;
 
@@ -23,7 +31,9 @@ const createReactStub = () => {
       };
       return [state[index], setState];
     },
-    useEffect() {},
+    useEffect(callback: () => void | (() => void)) {
+      callback();
+    },
     useMemo(factory: () => any) {
       return factory();
     },
@@ -36,7 +46,7 @@ const createReactStub = () => {
 
   react.__getState = () => state;
 
-  return react;
+  return react as ReactStub;
 };
 
 const createStubComponent = (type: string) => {
@@ -49,7 +59,7 @@ const createStubComponent = (type: string) => {
   return component;
 };
 
-const loadIndexPage = (reactStub: any, overrides: any = {}) => {
+const loadIndexPage = (reactStub: ReactStub, overrides: any = {}) => {
   const modulePath = fileURLToPath(new URL("../src/pages/Index.tsx", import.meta.url));
   const source = readFileSync(modulePath, "utf-8");
   const { outputText } = ts.transpileModule(source, {
@@ -155,7 +165,7 @@ const loadIndexPage = (reactStub: any, overrides: any = {}) => {
   return { module: module.exports, stubs: { credentialSetup, qrCodeScanner, chatSidebar, chatArea } };
 };
 
-test("mensagens privadas registram apenas no banco", () => {
+test("atualiza status da mensagem após evento UPDATE", async () => {
   const storage = (() => {
     const map = new Map<string, string>();
     return {
@@ -178,42 +188,33 @@ test("mensagens privadas registram apenas no banco", () => {
   global.window = { localStorage: storage, innerWidth: 1024 } as any;
   global.localStorage = storage as any;
 
-  storage.setItem("activeCredentialId", "cred-privado");
+  storage.setItem("activeCredentialId", "cred-1");
 
   try {
     const reactStub = createReactStub();
-    const insertCalls: any[] = [];
-    const invokeCalls: any[] = [];
+    const messageCallbacks: Record<string, (payload: any) => void> = {};
 
     const supabaseStub = {
       functions: {
-        invoke: async (...args: any[]) => {
-          invokeCalls.push(args);
-          return { data: { messageId: "remote" }, error: null };
+        invoke: async (name: string) => {
+          if (name === "uaz-fetch-chats") {
+            return { data: { chats: [] }, error: null };
+          }
+          if (name === "uaz-fetch-messages") {
+            return { data: { messages: [] }, error: null };
+          }
+          return { data: {}, error: null };
         },
       },
-      from: (table: string) => {
-        if (table === "messages") {
-          return {
-            insert: async (payload: any) => {
-              insertCalls.push(payload);
-              return { data: null, error: null };
-            },
-          };
-        }
-        if (table === "chats") {
-          return {
-            update: () => ({
-              eq: async () => ({ error: null }),
-            }),
-          };
-        }
-        return {
-          select: async () => ({ data: [], error: null }),
-        };
-      },
-      channel: () => ({
-        on() {
+      from: () => ({
+        select: async () => ({ data: [], error: null }),
+        update: () => ({ eq: async () => ({ error: null }) }),
+      }),
+      channel: (channelName: string) => ({
+        on(_type: string, filter: any, callback: (payload: any) => void) {
+          if (channelName === "messages-changes") {
+            messageCallbacks[filter.event] = callback;
+          }
           return this;
         },
         subscribe() {
@@ -227,9 +228,9 @@ test("mensagens privadas registram apenas no banco", () => {
     const chatArea = createStubComponent("ChatArea");
 
     const { module, stubs } = loadIndexPage(reactStub, {
+      supabase: supabaseStub,
       chatSidebar,
       chatArea,
-      supabase: supabaseStub,
       toast: () => {},
     });
 
@@ -238,7 +239,7 @@ test("mensagens privadas registram apenas no banco", () => {
     const firstRender = reactStub.__render(Index, { user: { id: "user" } });
     assert.equal(firstRender.type, stubs.qrCodeScanner);
 
-    stubs.qrCodeScanner.lastProps.onConnected();
+    firstRender.props.onConnected();
     reactStub.__render(Index, { user: { id: "user" } });
 
     stubs.chatSidebar.lastProps.onSelectChat({
@@ -252,19 +253,38 @@ test("mensagens privadas registram apenas no banco", () => {
 
     reactStub.__render(Index, { user: { id: "user" } });
 
-    const payload = {
-      content: "Mensagem privada",
-      messageType: "text" as const,
-      isPrivate: true,
+    assert.equal(typeof messageCallbacks.INSERT, "function");
+    assert.equal(typeof messageCallbacks.UPDATE, "function");
+
+    const baseMessage = {
+      id: "msg-1",
+      chat_id: "chat-1",
+      credential_id: "cred-1",
+      content: "Olá",
+      message_type: "text",
+      media_type: null,
+      caption: null,
+      document_name: null,
+      media_url: null,
+      media_base64: null,
+      from_me: true,
+      message_timestamp: new Date().toISOString(),
+      status: "sent",
     };
 
-    stubs.chatArea.lastProps.onSendMessage(payload);
+    messageCallbacks.INSERT({ new: baseMessage });
 
-    assert.equal(invokeCalls.length, 0);
-    assert.equal(insertCalls.length, 1);
-    assert.equal(insertCalls[0].content, "Mensagem privada");
-    assert.equal(insertCalls[0].is_private, true);
-    assert.equal(insertCalls[0].user_id, "user");
+    reactStub.__render(Index, { user: { id: "user" } });
+
+    assert.equal(stubs.chatArea.lastProps.messages[0].status, "sent");
+
+    const updatedMessage = { ...baseMessage, status: "delivered" };
+
+    messageCallbacks.UPDATE({ new: updatedMessage });
+
+    reactStub.__render(Index, { user: { id: "user" } });
+
+    assert.equal(stubs.chatArea.lastProps.messages[0].status, "delivered");
   } finally {
     global.window = originalWindow;
     global.localStorage = originalLocalStorage;
