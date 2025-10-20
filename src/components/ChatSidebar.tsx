@@ -164,44 +164,28 @@ export const ChatSidebar = ({
 
       {/* Chat List */}
       <ScrollArea className="flex-1">
-        {filteredChats.map((chat) => (
-          <div
-            key={chat.id}
-            onClick={() => {
-              onToggleSidebar();
-              onSelectChat(chat);
-            }}
-            className={`
-              flex items-center gap-3 p-3 cursor-pointer transition-colors
-              hover:bg-[hsl(var(--whatsapp-hover))]
-              ${selectedChat?.id === chat.id ? 'bg-[hsl(var(--whatsapp-hover))]' : ''}
-            `}
-          >
-            <Avatar className="w-12 h-12 flex-shrink-0">
-              <AvatarImage src={chat.avatar} />
-              <AvatarFallback className="bg-primary/10 text-primary">
-                {getInitials(chat.name)}
-              </AvatarFallback>
-            </Avatar>
-            
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="font-semibold text-sm truncate">{chat.name}</h3>
-                <span className="text-xs text-muted-foreground flex-shrink-0">
-                  {chat.timestamp}
-                </span>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground truncate flex-1">
-                  {chat.lastMessage}
-                </p>
-                {chat.unread > 0 && (
-                  <Badge className="ml-2 bg-primary text-primary-foreground rounded-full px-2 py-0 text-xs flex-shrink-0">
-                    {chat.unread}
-                  </Badge>
-                )}
-              </div>
+        {filteredChats.map((chat) => {
+          const assignedLabels = getAssignedLabels(chat);
+
+          return (
+            <div
+              key={chat.id}
+              onClick={() => {
+                onToggleSidebar();
+                onSelectChat(chat);
+              }}
+              className={`
+                flex items-center gap-3 p-3 cursor-pointer transition-colors
+                hover:bg-[hsl(var(--whatsapp-hover))]
+                ${selectedChat?.id === chat.id ? 'bg-[hsl(var(--whatsapp-hover))]' : ''}
+              `}
+            >
+              <Avatar className="w-12 h-12 flex-shrink-0">
+                <AvatarImage src={chat.avatar} />
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  {getInitials(chat.name)}
+                </AvatarFallback>
+              </Avatar>
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
