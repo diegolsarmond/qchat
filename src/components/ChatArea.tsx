@@ -159,22 +159,21 @@ export const requestAuthenticatedMedia = async ({
   credentialId: string;
   url: string;
 }) => {
-  const { data, error, response } = await supabase.functions.invoke<Blob>("uaz-download-media", {
-    body: { credentialId, url },
-  });
+  const { data, error, response } = await supabase.functions.invoke<ArrayBuffer>(
+    "uaz-download-media",
+    {
+      body: { credentialId, url },
+      responseType: "arraybuffer",
+    }
+  );
 
   if (error || !data) {
     return null;
   }
 
-  const contentType = response?.headers.get("x-content-type") ?? data.type ?? null;
+  const contentType = response?.headers.get("x-content-type") ?? null;
   const fileName = response?.headers.get("x-file-name") ?? null;
-  const blob =
-    contentType && data instanceof Blob && data.type !== contentType
-      ? data.slice(0, data.size, contentType)
-      : data instanceof Blob
-      ? data
-      : new Blob([data], { type: contentType ?? undefined });
+  const blob = new Blob([data], { type: contentType ?? undefined });
 
   return { blob, contentType, fileName };
 };
