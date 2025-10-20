@@ -382,7 +382,8 @@ const Index = ({ user }: IndexProps) => {
 
     try {
       if (payload.isPrivate) {
-        await supabase.from('messages').insert({
+        const { error } = await supabase.from('messages').insert({
+          id: messageId,
           chat_id: selectedChat.id,
           credential_id: credentialId,
           content: payload.content,
@@ -396,6 +397,8 @@ const Index = ({ user }: IndexProps) => {
           is_private: true,
           message_timestamp: new Date().toISOString(),
         });
+
+        if (error) throw error;
       } else {
         const { data, error } = await supabase.functions.invoke('uaz-send-message', {
           body: {
