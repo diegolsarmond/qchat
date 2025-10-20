@@ -17,7 +17,8 @@ export interface Chat {
   unread: number;
   avatar?: string;
   isGroup: boolean;
-  assignedTo?: string;
+  assignedTo?: string | string[];
+  assignedUserNames?: string[];
 }
 
 export interface Message {
