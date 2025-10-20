@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveMessageStorage } from "../message-storage.ts";
+import { buildUazMediaApiBody } from "./payload-helper.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -65,7 +66,15 @@ serve(async (req) => {
 
     console.log('[UAZ Send Message] Sending to number:', phoneNumber);
 
-    const storage = resolveMessageStorage({
+    const {
+      content: storageContent,
+      messageType: storageMessageType,
+      mediaType: storageMediaType,
+      caption: storageCaption,
+      documentName: storageDocumentName,
+      mediaUrl: storageMediaUrl,
+      mediaBase64: storageMediaBase64,
+    } = resolveMessageStorage({
       content,
       messageType,
       mediaType,
@@ -75,18 +84,16 @@ serve(async (req) => {
       mediaBase64,
     });
 
-    const isMediaMessage = storage.messageType === 'media';
+    const isMediaMessage = storageMessageType === 'media';
+    const finalMediaType = storageMediaType ?? mediaType ?? null;
 
     let apiPath = 'text';
     let apiBody: Record<string, unknown> = {
       number: phoneNumber,
-      text: content,
+      text: storageContent,
     };
-    let contentToStore = content;
-    let typeToStore = messageType;
 
     if (isMediaMessage) {
-      finalMediaType = resolvedMediaType || mediaType;
       if (!finalMediaType) {
         return new Response(
           JSON.stringify({ error: 'Tipo de mídia é obrigatório' }),
@@ -94,7 +101,7 @@ serve(async (req) => {
         );
       }
 
-      if (!mediaUrl && !mediaBase64) {
+      if (!storageMediaUrl && !storageMediaBase64) {
         return new Response(
           JSON.stringify({ error: 'Origem da mídia é obrigatória' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -102,34 +109,14 @@ serve(async (req) => {
       }
 
       apiPath = 'media';
-      apiBody = {
-        number: phoneNumber,
-        type: finalMediaType,
-      };
-
-      mediaUrlToStore = mediaUrl ?? null;
-      mediaBase64ToStore = mediaBase64 ?? null;
-      documentNameToStore = documentName ?? null;
-      captionToStore = caption ?? null;
-
-      if (mediaUrl) {
-        apiBody.url = mediaUrl;
-      }
-
-      if (mediaBase64) {
-        apiBody.base64 = mediaBase64;
-      }
-
-      if (documentName) {
-        apiBody.fileName = documentName;
-      }
-
-      if (caption) {
-        apiBody.caption = caption;
-      }
-
-      contentToStore = caption || content || `[${finalMediaType}]`;
-      typeToStore = 'media';
+      apiBody = buildUazMediaApiBody({
+        phoneNumber,
+        mediaType: finalMediaType,
+        mediaUrl: storageMediaUrl,
+        mediaBase64: storageMediaBase64,
+        caption: storageCaption,
+        documentName: storageDocumentName,
+      });
     }
 
     const messageResponse = await fetch(`https://${credential.subdomain}.uazapi.com/send/${apiPath}`, {
@@ -161,8 +148,13 @@ serve(async (req) => {
       .insert({
         chat_id: chatId,
         wa_message_id: messageData.Id || `msg_${timestamp}`,
-        content: contentToStore,
-        message_type: typeToStore,
+        content: storageContent,
+        message_type: storageMessageType,
+        media_type: storageMediaType,
+        media_url: storageMediaUrl,
+        media_base64: storageMediaBase64,
+        document_name: storageDocumentName,
+        caption: storageCaption,
         from_me: true,
         status: 'sent',
         message_timestamp: timestamp,
@@ -174,9 +166,9 @@ serve(async (req) => {
 
     // Update last message in chat
     await supabaseClient
-        .from('chats')
-        .update({
-        last_message: storage.content,
+      .from('chats')
+      .update({
+        last_message: storageContent,
         last_message_timestamp: timestamp,
       })
       .eq('id', chatId);
