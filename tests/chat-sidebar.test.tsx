@@ -160,6 +160,8 @@ test("ChatSidebar aciona onToggleSidebar ao selecionar um chat", () => {
     activeFilter: "all",
     onFilterChange: () => {},
     currentUserId: "user-1",
+    onDisconnect: () => {},
+    isDisconnecting: false,
   });
 
   const clickable = findElementWithOnClickAndText(element, chat.name);
@@ -192,6 +194,8 @@ test("ChatSidebar chama signOut e redireciona ao clicar em Sair", async () => {
     activeFilter: "all",
     onFilterChange: () => {},
     currentUserId: "user-1",
+    onDisconnect: () => {},
+    isDisconnecting: false,
   });
 
   assert.ok(elementContainsText(element, "Sair"), "Texto 'Sair' não foi renderizado");
@@ -232,6 +236,8 @@ test("ChatSidebar exibe rótulos de atribuição quando disponíveis", () => {
     activeFilter: "all",
     onFilterChange: () => {},
     currentUserId: "agent-123",
+    onDisconnect: () => {},
+    isDisconnecting: false,
   });
 
   assert.ok(elementContainsText(element, "Atribuído:"), "Legenda de atribuição não foi renderizada");

@@ -18,6 +18,8 @@ interface ChatSidebarProps {
   activeFilter: ChatFilter;
   onFilterChange: (value: ChatFilter) => void;
   currentUserId?: string;
+  onDisconnect: () => void;
+  isDisconnecting?: boolean;
 }
 
 export const filterChatsByAttendance = (
@@ -57,6 +59,8 @@ export const ChatSidebar = ({
   activeFilter,
   onFilterChange,
   currentUserId,
+  onDisconnect,
+  isDisconnecting,
 }: ChatSidebarProps) => {
   const navigate = useNavigate();
   const getInitials = (name: string) => {
@@ -107,6 +111,16 @@ export const ChatSidebar = ({
           <h1 className="text-lg font-semibold text-primary-foreground">WhatsApp</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-3 text-sm text-primary-foreground hover:bg-white/10"
+            onClick={onDisconnect}
+            disabled={isDisconnecting}
+            data-testid="disconnect-button"
+          >
+            Desconectar
+          </Button>
           <Button
             variant="ghost"
             size="sm"
