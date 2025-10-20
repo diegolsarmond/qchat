@@ -33,23 +33,27 @@ export interface Message {
   timestamp: string;
   from: 'me' | 'them';
   status?: 'sent' | 'delivered' | 'read';
-  messageType?: 'text' | 'media';
+  messageType?: 'text' | 'media' | 'contact';
   mediaType?: string;
   caption?: string;
   documentName?: string;
   mediaUrl?: string;
   mediaBase64?: string;
+  contactName?: string;
+  contactPhone?: string;
 }
 
 export interface SendMessagePayload {
   content: string;
-  messageType: 'text' | 'media';
+  messageType: 'text' | 'media' | 'contact';
   mediaType?: string;
   mediaUrl?: string;
   mediaBase64?: string;
   documentName?: string;
   caption?: string;
   isPrivate?: boolean;
+  contactName?: string;
+  contactPhone?: string;
 }
 
 export interface User {

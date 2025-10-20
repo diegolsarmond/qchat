@@ -7,6 +7,14 @@ export interface UazMediaPayloadParams {
   documentName: string | null;
 }
 
+export interface UazContactPayloadParams {
+  phoneNumber: string;
+  contactName: string;
+  contactPhone: string;
+}
+
+export const UAZ_CONTACT_ENDPOINT = 'contact';
+
 export const buildUazMediaApiBody = ({
   phoneNumber,
   mediaType,
@@ -37,3 +45,13 @@ export const buildUazMediaApiBody = ({
 
   return payload;
 };
+
+export const buildUazContactApiBody = ({
+  phoneNumber,
+  contactName,
+  contactPhone,
+}: UazContactPayloadParams): Record<string, unknown> => ({
+  number: phoneNumber,
+  name: contactName,
+  phone: contactPhone,
+});

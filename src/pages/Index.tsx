@@ -369,6 +369,8 @@ const Index = ({ user }: IndexProps) => {
 
     const messageContent = payload.messageType === 'text'
       ? payload.content
+      : payload.messageType === 'contact'
+      ? payload.contactName || payload.content
       : payload.caption || `[${payload.mediaType || 'mídia'}]`;
     const timestamp = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const fallbackId = () => {
@@ -411,6 +413,8 @@ const Index = ({ user }: IndexProps) => {
             mediaBase64: payload.mediaBase64,
             documentName: payload.documentName,
             caption: payload.caption,
+            contactName: payload.contactName,
+            contactPhone: payload.contactPhone,
           }
         });
 
@@ -433,6 +437,8 @@ const Index = ({ user }: IndexProps) => {
         documentName: payload.documentName,
         mediaUrl: payload.mediaUrl,
         mediaBase64: payload.mediaBase64,
+        contactName: payload.contactName,
+        contactPhone: payload.contactPhone,
       };
 
       setMessages(prev => [...prev, newMessage]);

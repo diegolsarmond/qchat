@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveMessageStorage } from "../message-storage.ts";
-import { buildUazMediaApiBody } from "./payload-helper.ts";
+import { buildUazMediaApiBody, buildUazContactApiBody, UAZ_CONTACT_ENDPOINT } from "./payload-helper.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,6 +24,8 @@ serve(async (req) => {
       mediaBase64,
       documentName,
       caption,
+      contactName,
+      contactPhone,
     } = await req.json();
     
     console.log('[UAZ Send Message] Sending to chat:', chatId);
@@ -66,57 +68,106 @@ serve(async (req) => {
 
     console.log('[UAZ Send Message] Sending to number:', phoneNumber);
 
-    const {
-      content: storageContent,
-      messageType: storageMessageType,
-      mediaType: storageMediaType,
-      caption: storageCaption,
-      documentName: storageDocumentName,
-      mediaUrl: storageMediaUrl,
-      mediaBase64: storageMediaBase64,
-    } = resolveMessageStorage({
-      content,
-      messageType,
-      mediaType,
-      caption,
-      documentName,
-      mediaUrl,
-      mediaBase64,
-    });
-
-    const isMediaMessage = storageMessageType === 'media';
-    const finalMediaType = storageMediaType ?? mediaType ?? null;
-
     let apiPath = 'text';
-    let apiBody: Record<string, unknown> = {
-      number: phoneNumber,
-      text: storageContent,
-    };
+    let apiBody: Record<string, unknown>;
+    let storageContent = '';
+    let storageMessageType: 'text' | 'media' | 'contact' = 'text';
+    let storageMediaType: string | null = null;
+    let storageCaption: string | null = null;
+    let storageDocumentName: string | null = null;
+    let storageMediaUrl: string | null = null;
+    let storageMediaBase64: string | null = null;
 
-    if (isMediaMessage) {
-      if (!finalMediaType) {
+    const normalizedType = (messageType ?? '').toString().toLowerCase();
+    const isContactMessage = normalizedType === 'contact';
+
+    if (isContactMessage) {
+      const normalizedName = (contactName ?? '').toString().trim();
+      const normalizedPhone = (contactPhone ?? '').toString().trim();
+
+      if (!normalizedName || !normalizedPhone) {
         return new Response(
-          JSON.stringify({ error: 'Tipo de mídia é obrigatório' }),
+          JSON.stringify({ error: 'Nome e telefone do contato são obrigatórios' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      if (!storageMediaUrl && !storageMediaBase64) {
-        return new Response(
-          JSON.stringify({ error: 'Origem da mídia é obrigatória' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      apiPath = 'media';
-      apiBody = buildUazMediaApiBody({
+      apiPath = UAZ_CONTACT_ENDPOINT;
+      apiBody = buildUazContactApiBody({
         phoneNumber,
-        mediaType: finalMediaType,
-        mediaUrl: storageMediaUrl,
-        mediaBase64: storageMediaBase64,
-        caption: storageCaption,
-        documentName: storageDocumentName,
+        contactName: normalizedName,
+        contactPhone: normalizedPhone,
       });
+
+      storageContent = normalizedName;
+      storageMessageType = 'contact';
+    } else {
+      const {
+        content: resolvedContent,
+        messageType: resolvedMessageType,
+        mediaType: resolvedMediaType,
+        caption: resolvedCaption,
+        documentName: resolvedDocumentName,
+        mediaUrl: resolvedMediaUrl,
+        mediaBase64: resolvedMediaBase64,
+      } = resolveMessageStorage({
+        content,
+        messageType,
+        mediaType,
+        caption,
+        documentName,
+        mediaUrl,
+        mediaBase64,
+      });
+
+      storageContent = resolvedContent;
+      storageMessageType = resolvedMessageType;
+      storageMediaType = resolvedMediaType;
+      storageCaption = resolvedCaption;
+      storageDocumentName = resolvedDocumentName;
+      storageMediaUrl = resolvedMediaUrl;
+      storageMediaBase64 = resolvedMediaBase64;
+
+      const isMediaMessage = storageMessageType === 'media';
+      const finalMediaType = storageMediaType ?? mediaType ?? null;
+
+      if (isMediaMessage) {
+        if (!finalMediaType) {
+          return new Response(
+            JSON.stringify({ error: 'Tipo de mídia é obrigatório' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (!storageMediaUrl && !storageMediaBase64) {
+          return new Response(
+            JSON.stringify({ error: 'Origem da mídia é obrigatória' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        apiPath = 'media';
+        apiBody = buildUazMediaApiBody({
+          phoneNumber,
+          mediaType: finalMediaType,
+          mediaUrl: storageMediaUrl,
+          mediaBase64: storageMediaBase64,
+          caption: storageCaption,
+          documentName: storageDocumentName,
+        });
+      } else {
+        apiBody = {
+          number: phoneNumber,
+          text: storageContent,
+        };
+      }
+    }
+
+    if (!apiBody) {
+      apiBody = {
+        number: phoneNumber,
+        text: storageContent,
+      };
     }
 
     const messageResponse = await fetch(`https://${credential.subdomain}.uazapi.com/send/${apiPath}`, {
