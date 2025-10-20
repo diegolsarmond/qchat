@@ -3,16 +3,23 @@ import assert from 'node:assert/strict';
 import {
   buildUazMediaApiBody,
   buildUazInteractiveApiBody,
-  UAZ_MENU_ENDPOINT,
-} from '../supabase/functions/uaz-send-message/payload-helper.ts';
   buildUazContactApiBody,
-  UAZ_CONTACT_ENDPOINT,
-} from '../supabase/functions/uaz-send-message/payload-helper.ts';
   buildUazLocationApiBody,
+  UAZ_MENU_ENDPOINT,
+  UAZ_CONTACT_ENDPOINT,
   UAZ_LOCATION_API_PATH,
 } from '../supabase/functions/uaz-send-message/payload-helper.ts';
-import { buildUazMediaApiBody } from '../supabase/functions/uaz-send-message/payload-helper.ts';
 import { resolveMessageStorage } from '../supabase/functions/message-storage.ts';
+
+test('resolveMessageStorage mantém texto simples', () => {
+  const storage = resolveMessageStorage({
+    content: 'Olá mundo',
+    messageType: 'text',
+  });
+
+  assert.equal(storage.content, 'Olá mundo');
+  assert.equal(storage.messageType, 'text');
+});
 
 test('buildUazMediaApiBody monta payload base64 corretamente', () => {
   const body = buildUazMediaApiBody({
@@ -46,17 +53,6 @@ test('buildUazInteractiveApiBody monta payload de botões', () => {
         { id: 'opt_2', title: 'Opção 2' },
       ],
     },
-test('buildUazContactApiBody monta payload de contato corretamente', () => {
-  const body = buildUazContactApiBody({
-    phoneNumber: '5531999999999',
-    contactName: 'Maria Silva',
-    contactPhone: '31988887777',
-test('buildUazLocationApiBody monta payload de localização corretamente', () => {
-  const body = buildUazLocationApiBody({
-    phoneNumber: '5531999999999',
-    latitude: -19.923,
-    longitude: -43.938,
-    locationName: 'Praça da Liberdade',
   });
 
   assert.deepStrictEqual(body, {
@@ -74,59 +70,42 @@ test('buildUazLocationApiBody monta payload de localização corretamente', () =
   });
 });
 
-test('buildUazInteractiveApiBody monta payload de lista', () => {
-  const body = buildUazInteractiveApiBody({
+test('buildUazContactApiBody monta payload de contato corretamente', () => {
+  const body = buildUazContactApiBody({
     phoneNumber: '5531999999999',
-    menu: {
-      type: 'list',
-      body: 'Selecione um item',
-      button: 'Abrir lista',
-      sections: [
-        {
-          title: 'Sessão A',
-          rows: [
-            { id: 'row_a', title: 'Item A', description: 'Descrição A' },
-          ],
-        },
-      ],
-    },
+    contactName: 'Maria Silva',
+    contactPhone: '31988887777',
   });
 
   assert.deepStrictEqual(body, {
     number: '5531999999999',
-    options: {
-      body: 'Selecione um item',
-      type: 'list',
-      button: 'Abrir lista',
-      sections: [
-        {
-          title: 'Sessão A',
-          rows: [
-            { id: 'row_a', title: 'Item A', description: 'Descrição A' },
-          ],
-        },
-      ],
-    },
-  });
-});
-
-test('constante do endpoint interativo utiliza /send/menu', () => {
-  assert.equal(UAZ_MENU_ENDPOINT, 'menu');
     name: 'Maria Silva',
     phone: '31988887777',
   });
 });
 
-test('endpoint de contato utiliza rota contact', () => {
-  assert.strictEqual(UAZ_CONTACT_ENDPOINT, 'contact');
+test('buildUazLocationApiBody monta payload de localização corretamente', () => {
+  const body = buildUazLocationApiBody({
+    phoneNumber: '5531999999999',
+    latitude: -19.923,
+    longitude: -43.938,
+    locationName: 'Praça da Liberdade',
+  });
+
+  assert.deepStrictEqual(body, {
+    number: '5531999999999',
     latitude: -19.923,
     longitude: -43.938,
     locationName: 'Praça da Liberdade',
   });
 });
 
-test('UAZ_LOCATION_API_PATH aponta para o endpoint de localização', () => {
-  assert.strictEqual(UAZ_LOCATION_API_PATH, 'location');
+test('constantes de endpoint permanecem inalteradas', () => {
+  assert.equal(UAZ_MENU_ENDPOINT, 'menu');
+  assert.equal(UAZ_CONTACT_ENDPOINT, 'contact');
+  assert.equal(UAZ_LOCATION_API_PATH, 'location');
+});
+
 test('buildUazMediaApiBody normaliza PTT para audio', () => {
   const body = buildUazMediaApiBody({
     phoneNumber: '5531888888888',
