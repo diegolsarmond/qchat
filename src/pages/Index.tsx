@@ -144,11 +144,44 @@ const Index = ({ user }: IndexProps) => {
         const previewContent = mappedMessage.messageType === 'text'
           ? mappedMessage.content
           : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
+        const rawTimestamp = payload.new?.message_timestamp ?? null;
+        const messageTimestampMs = rawTimestamp ? new Date(rawTimestamp).getTime() : null;
 
         setChats(prevChats => prevChats.map(chat =>
-          chat.id === mappedMessage.chatId
-            ? { ...chat, lastMessage: previewContent, timestamp: mappedMessage.timestamp }
-            : chat
+          {
+            if (chat.id !== mappedMessage.chatId) {
+              return chat;
+            }
+
+            const shouldUpdatePreview = (() => {
+              if (payload.eventType === 'INSERT') {
+                if (messageTimestampMs === null) {
+                  return true;
+                }
+                return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
+              }
+
+              if (payload.eventType === 'UPDATE') {
+                if (messageTimestampMs === null) {
+                  return false;
+                }
+                return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
+              }
+
+              return false;
+            })();
+
+            if (!shouldUpdatePreview) {
+              return chat;
+            }
+
+            return {
+              ...chat,
+              lastMessage: previewContent,
+              timestamp: mappedMessage.timestamp,
+              lastMessageAt: messageTimestampMs ?? chat.lastMessageAt ?? null,
+            };
+          }
         ));
 
         if (selectedChat && payload.new.chat_id === selectedChat.id) {
@@ -244,19 +277,24 @@ const Index = ({ user }: IndexProps) => {
       if (error) throw error;
 
       if (data?.chats) {
-        setChats(data.chats.map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          lastMessage: c.last_message || '',
-          timestamp: c.last_message_timestamp
-            ? new Date(c.last_message_timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-            : '',
-          unread: c.unread_count || 0,
-          avatar: c.avatar || undefined,
-          isGroup: c.is_group || false,
-          assignedTo: c.assigned_to || undefined,
-          attendanceStatus: deriveAttendanceStatus(c),
-        })));
+        setChats(data.chats.map((c: any) => {
+          const lastMessageDate = c.last_message_timestamp ? new Date(c.last_message_timestamp) : null;
+
+          return {
+            id: c.id,
+            name: c.name,
+            lastMessage: c.last_message || '',
+            timestamp: lastMessageDate
+              ? lastMessageDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+              : '',
+            lastMessageAt: lastMessageDate ? lastMessageDate.getTime() : null,
+            unread: c.unread_count || 0,
+            avatar: c.avatar || undefined,
+            isGroup: c.is_group || false,
+            assignedTo: c.assigned_to || undefined,
+            attendanceStatus: deriveAttendanceStatus(c),
+          };
+        }));
       }
     } catch (error) {
       console.error('Error fetching chats:', error);
@@ -384,7 +422,8 @@ const Index = ({ user }: IndexProps) => {
     const messageContent = payload.messageType === 'text'
       ? payload.content
       : payload.caption || `[${payload.mediaType || 'mídia'}]`;
-    const timestamp = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const now = Date.now();
+    const timestamp = new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const fallbackId = () => {
       if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
@@ -453,9 +492,9 @@ const Index = ({ user }: IndexProps) => {
         offset: prev.offset + 1,
       }));
 
-      setChats(chats.map(c =>
+      setChats(prevChats => prevChats.map(c =>
         c.id === selectedChat.id
-          ? { ...c, lastMessage: messageContent, timestamp: newMessage.timestamp }
+          ? { ...c, lastMessage: messageContent, timestamp: newMessage.timestamp, lastMessageAt: now }
           : c
       ));
 
