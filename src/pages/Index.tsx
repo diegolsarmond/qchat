@@ -146,6 +146,8 @@ const Index = ({ user }: IndexProps) => {
       active = false;
     };
   }, [user, credentialId, toast]);
+
+  useEffect(() => {
     if (!selectedChat) {
       return;
     }
