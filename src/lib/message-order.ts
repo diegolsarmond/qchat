@@ -10,5 +10,20 @@ export const mergeFetchedMessages = (
   reset: boolean,
 ): Message[] => {
   const normalized = normalizeFetchedMessages(fetched);
-  return reset ? normalized : [...normalized, ...previous];
+  if (reset) {
+    return normalized;
+  }
+
+  if (!normalized.length) {
+    return previous;
+  }
+
+  const existingIds = new Set(previous.map(message => message.id));
+  const filtered = normalized.filter(message => !existingIds.has(message.id));
+
+  if (!filtered.length) {
+    return previous;
+  }
+
+  return [...filtered, ...previous];
 };
