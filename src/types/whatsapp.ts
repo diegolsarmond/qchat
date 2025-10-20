@@ -33,7 +33,7 @@ export interface Message {
   timestamp: string;
   from: 'me' | 'them';
   status?: 'sent' | 'delivered' | 'read';
-  messageType?: 'text' | 'media';
+  messageType?: 'text' | 'media' | 'interactive';
   mediaType?: string;
   caption?: string;
   documentName?: string;
@@ -41,15 +41,37 @@ export interface Message {
   mediaBase64?: string;
 }
 
+export interface InteractiveMenuOption {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface InteractiveMenuSection {
+  title?: string;
+  rows: InteractiveMenuOption[];
+}
+
+export interface InteractiveMenuPayload {
+  header?: string;
+  body: string;
+  footer?: string;
+  type: 'buttons' | 'list';
+  button?: string;
+  buttons?: InteractiveMenuOption[];
+  sections?: InteractiveMenuSection[];
+}
+
 export interface SendMessagePayload {
   content: string;
-  messageType: 'text' | 'media';
+  messageType: 'text' | 'media' | 'interactive';
   mediaType?: string;
   mediaUrl?: string;
   mediaBase64?: string;
   documentName?: string;
   caption?: string;
   isPrivate?: boolean;
+  interactive?: InteractiveMenuPayload;
 }
 
 export interface User {

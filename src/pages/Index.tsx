@@ -150,9 +150,9 @@ const Index = ({ user }: IndexProps) => {
           (payload) => {
             console.log('New message:', payload);
             const mappedMessage = mapApiMessage(payload.new as any);
-            const previewContent = mappedMessage.messageType === 'text'
-              ? mappedMessage.content
-              : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
+            const previewContent = mappedMessage.messageType === 'media'
+              ? mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`
+              : mappedMessage.content;
 
             setChats(prevChats => prevChats.map(chat =>
               chat.id === mappedMessage.chatId
@@ -367,9 +367,9 @@ const Index = ({ user }: IndexProps) => {
   const handleSendMessage = async (payload: SendMessagePayload) => {
     if (!selectedChat || !credentialId) return;
 
-    const messageContent = payload.messageType === 'text'
-      ? payload.content
-      : payload.caption || `[${payload.mediaType || 'mídia'}]`;
+    const messageContent = payload.messageType === 'media'
+      ? payload.caption || `[${payload.mediaType || 'mídia'}]`
+      : payload.content;
     const timestamp = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const fallbackId = () => {
       if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
@@ -411,6 +411,7 @@ const Index = ({ user }: IndexProps) => {
             mediaBase64: payload.mediaBase64,
             documentName: payload.documentName,
             caption: payload.caption,
+            interactive: payload.interactive,
           }
         });
 
