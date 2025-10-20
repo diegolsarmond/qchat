@@ -17,7 +17,10 @@ import {
   ArrowLeft,
   X,
   Lock,
-  Unlock
+  Unlock,
+  UserPlus
+  MapPin,
+  Download
 } from "lucide-react";
 import { Chat, Message, SendMessagePayload } from "@/types/whatsapp";
 import {
@@ -235,6 +238,61 @@ const blobToBase64 = (blob: Blob) =>
     reader.readAsDataURL(blob);
   });
 
+const base64ToUint8Array = (value: string) => {
+  if (typeof atob === "function") {
+    const binary = atob(value);
+    const length = binary.length;
+    const bytes = new Uint8Array(length);
+    for (let index = 0; index < length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  }
+  const bufferCtor = (globalThis as { Buffer?: { from: (data: string, encoding: string) => Uint8Array } }).Buffer;
+  if (bufferCtor) {
+    return bufferCtor.from(value, "base64");
+  }
+  return new Uint8Array();
+};
+
+const inferAudioMimeType = (message: Message) => {
+  const name = message.documentName?.toLowerCase() ?? "";
+  if (name.endsWith(".webm")) return "audio/webm";
+  if (name.endsWith(".mp3")) return "audio/mpeg";
+  if (name.endsWith(".wav")) return "audio/wav";
+  if (name.endsWith(".m4a")) return "audio/mp4";
+  if (name.endsWith(".ogg")) return "audio/ogg";
+  if (message.mediaType === "ptt") return "audio/ogg";
+  return "audio/ogg";
+};
+
+type AudioSource = { url: string; shouldRevoke: boolean };
+
+const resolveAudioSource = (message: Message): AudioSource | null => {
+  if (message.mediaUrl) {
+    return { url: message.mediaUrl, shouldRevoke: false };
+  }
+  if (!message.mediaBase64) {
+    return null;
+  }
+  const base64 = message.mediaBase64.includes(",")
+    ? message.mediaBase64.split(",").pop() ?? ""
+    : message.mediaBase64;
+  if (!base64) {
+    return null;
+  }
+  const bytes = base64ToUint8Array(base64);
+  if (!bytes.length) {
+    return null;
+  }
+  const blob = new Blob([bytes], { type: inferAudioMimeType(message) });
+  if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+    return { url: `data:${blob.type};base64,${base64}`, shouldRevoke: false };
+  }
+  const url = URL.createObjectURL(blob);
+  return { url, shouldRevoke: true };
+};
+
 interface AudioRecorderOptions {
   getOnSendMessage: () => (payload: SendMessagePayload) => void;
   getIsPrivate: () => boolean;
@@ -405,14 +463,51 @@ export const ChatArea = ({
   const [isRecording, setIsRecording] = useState(false);
   const [recordingChunks, setRecordingChunks] = useState<Blob[]>([]);
   const [isPrivate, setIsPrivate] = useState(false);
+  const [showContactForm, setShowContactForm] = useState(false);
+  const [contactName, setContactName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
   const onSendMessageRef = useRef(onSendMessage);
   const recorderRef = useRef<ReturnType<typeof createAudioRecorder> | null>(null);
   const messagesStartRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isPrivateRef = useRef(isPrivate);
   const orderedMessages = useMemo(() => [...messages], [messages]);
   const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
+  const audioSources = useMemo(() => {
+    const map = new Map<string, AudioSource>();
+    orderedMessages.forEach((message) => {
+      if (
+        message.messageType !== "media" ||
+        (message.mediaType !== "audio" && message.mediaType !== "ptt" && message.mediaType !== "voice")
+      ) {
+        return;
+      }
+      const source = resolveAudioSource(message);
+      if (source) {
+        map.set(message.id, source);
+      }
+    });
+    return map;
+  }, [orderedMessages]);
+  const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
+
+  const audioSources = useMemo(() => {
+    const map = new Map<string, AudioSource>();
+    orderedMessages.forEach((message) => {
+      if (message.messageType !== "media") {
+        return;
+      }
+      const type = message.mediaType?.toLowerCase();
+      if (type !== "audio" && type !== "ptt" && type !== "voice") {
+        return;
+      }
+      const source = resolveAudioSource(message);
+      if (source) {
+        map.set(message.id, source);
+      }
+    });
+    return map;
+  }, [orderedMessages]);
 
   useEffect(() => {
     onSendMessageRef.current = onSendMessage;
@@ -421,6 +516,23 @@ export const ChatArea = ({
   useEffect(() => {
     isPrivateRef.current = isPrivate;
   }, [isPrivate]);
+
+  useEffect(() => {
+    const urls: string[] = [];
+    audioSources.forEach((source) => {
+      if (source.shouldRevoke) {
+        urls.push(source.url);
+      }
+    });
+    return () => {
+      if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
+        return;
+      }
+      urls.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+    };
+  }, [audioSources]);
 
   if (!recorderRef.current) {
     recorderRef.current = createAudioRecorder({
@@ -566,6 +678,36 @@ export const ChatArea = ({
     }
   };
 
+  const handleToggleContactForm = () => {
+    setShowContactForm((value) => {
+      if (value) {
+        setContactName("");
+        setContactPhone("");
+      }
+      return !value;
+    });
+  };
+
+  const handleSendContact = () => {
+    const name = contactName.trim();
+    const phone = contactPhone.trim();
+
+    if (!name || !phone) {
+      return;
+    }
+
+    onSendMessage({
+      content: name,
+      messageType: 'contact',
+      contactName: name,
+      contactPhone: phone,
+    });
+
+    setContactName("");
+    setContactPhone("");
+    setShowContactForm(false);
+  };
+
   const handleStartRecording = () => {
     recorderRef.current?.startRecording();
   };
@@ -587,6 +729,42 @@ export const ChatArea = ({
 
   const handleAttach = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleSendLocation = () => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const latitudeInput = window.prompt('Informe a latitude');
+    if (!latitudeInput) {
+      return;
+    }
+
+    const longitudeInput = window.prompt('Informe a longitude');
+    if (!longitudeInput) {
+      return;
+    }
+
+    const latitude = Number(latitudeInput);
+    const longitude = Number(longitudeInput);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return;
+    }
+
+    const locationNameInput = window.prompt('Informe o nome do local') ?? '';
+    const trimmedLocationName = locationNameInput.trim();
+    const content = trimmedLocationName || `${latitude}, ${longitude}`;
+
+    onSendMessage({
+      content,
+      messageType: 'location',
+      latitude,
+      longitude,
+      locationName: trimmedLocationName || undefined,
+      ...(isPrivate ? { isPrivate: true } : {}),
+    });
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -825,11 +1003,15 @@ export const ChatArea = ({
               </Button>
             </div>
           )}
-          {orderedMessages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.from === 'me' ? 'justify-end' : 'justify-start'}`}
-            >
+          {orderedMessages.map((message) => {
+            const isAudioMessage =
+              message.messageType === "media" &&
+              (message.mediaType === "audio" || message.mediaType === "ptt");
+            const audioSource = isAudioMessage ? audioSources.get(message.id) : undefined;
+            const fallbackLabel = `[${message.mediaType === "ptt" ? "ptt" : "audio"}]`;
+            const caption = message.caption?.trim() || message.content?.trim() || fallbackLabel;
+
+            return (
               <div
               className={`
                   max-w-[65%] rounded-lg p-2 px-3 shadow-sm
@@ -875,8 +1057,36 @@ export const ChatArea = ({
         >
           <Paperclip className="w-5 h-5" />
         </Button>
-        
-        {isRecording ? (
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`text-primary-foreground hover:bg-white/10 ${
+            showContactForm ? 'bg-white/20 text-primary' : ''
+          }`}
+          onClick={handleToggleContactForm}
+          aria-label={showContactForm ? 'Fechar formulário de contato' : 'Abrir formulário de contato'}
+          disabled={isRecording}
+        >
+          <UserPlus className="w-5 h-5" />
+        </Button>
+
+        {showContactForm ? (
+          <div className="flex flex-1 gap-2">
+            <Input
+              value={contactName}
+              onChange={(event) => setContactName(event.target.value)}
+              placeholder="Nome do contato"
+              className="bg-white/90"
+            />
+            <Input
+              value={contactPhone}
+              onChange={(event) => setContactPhone(event.target.value)}
+              placeholder="Telefone"
+              className="bg-white/90"
+            />
+          </div>
+        ) : isRecording ? (
           <div className="flex-1 bg-white/90 rounded-md px-3 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-destructive">
               <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
@@ -930,6 +1140,16 @@ export const ChatArea = ({
               <Send className="w-5 h-5" />
             </Button>
           </>
+        ) : showContactForm ? (
+          <Button
+            onClick={handleSendContact}
+            size="icon"
+            className="bg-primary hover:bg-primary/90"
+            aria-label="Enviar contato"
+            disabled={!contactName.trim() || !contactPhone.trim()}
+          >
+            <Send className="w-5 h-5" />
+          </Button>
         ) : messageText.trim() ? (
           <Button
             onClick={handleSend}

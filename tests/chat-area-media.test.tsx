@@ -132,6 +132,32 @@ test("renderiza vídeo a partir de base64", () => {
   }
 });
 
+test("renderiza áudio a partir de base64", () => {
+  const restore = withObjectUrl("blob:audio.ogg");
+  try {
+    const messages: Message[] = [
+      {
+        id: "msg-audio",
+        chatId: "chat-1",
+        content: "[audio]",
+        timestamp: "10:03",
+        from: "them",
+        messageType: "media",
+        mediaType: "audio",
+        mediaBase64: "AQID",
+        caption: "Áudio de teste",
+      },
+    ];
+
+    const { container } = renderWithMessages(messages);
+
+    assert.match(container.markup, /<audio[^>]+src="blob:audio.ogg"/);
+    assert.match(container.markup, /Áudio de teste/);
+  } finally {
+    restore();
+  }
+});
+
 test("renderiza documento com link de download", () => {
   const messages: Message[] = [
     {
