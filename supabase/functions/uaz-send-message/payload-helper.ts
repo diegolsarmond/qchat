@@ -16,6 +16,8 @@ export const buildUazMediaApiBody = ({
   documentName,
 }: UazMediaPayloadParams): Record<string, unknown> => {
   const file = mediaUrl ?? mediaBase64;
+  const normalizedMediaType =
+    mediaType.toLowerCase() === 'ptt' ? 'audio' : mediaType;
 
   if (!file) {
     throw new Error('Origem da mídia é obrigatória');
@@ -23,7 +25,7 @@ export const buildUazMediaApiBody = ({
 
   const payload: Record<string, unknown> = {
     number: phoneNumber,
-    type: mediaType,
+    type: normalizedMediaType,
     file,
   };
 
