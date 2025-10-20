@@ -31,7 +31,17 @@ export const filterChatsByAttendance = (
     if (!currentUserId) {
       return [];
     }
-    return chats.filter(chat => chat.assignedTo === currentUserId);
+    return chats.filter(chat => {
+      if (!chat.assignedTo) {
+        return false;
+      }
+
+      if (Array.isArray(chat.assignedTo)) {
+        return chat.assignedTo.includes(currentUserId);
+      }
+
+      return chat.assignedTo === currentUserId;
+    });
   }
 
   if (filter === "in_service") {
