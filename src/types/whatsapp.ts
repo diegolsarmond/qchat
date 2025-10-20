@@ -34,11 +34,18 @@ export interface Message {
   from: 'me' | 'them';
   status?: 'sent' | 'delivered' | 'read';
   messageType?: 'text' | 'media' | 'interactive';
+  messageType?: 'text' | 'media' | 'contact';
+  messageType?: 'text' | 'media' | 'location';
   mediaType?: string;
   caption?: string;
   documentName?: string;
   mediaUrl?: string;
   mediaBase64?: string;
+  contactName?: string;
+  contactPhone?: string;
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
 }
 
 export interface InteractiveMenuOption {
@@ -65,6 +72,8 @@ export interface InteractiveMenuPayload {
 export interface SendMessagePayload {
   content: string;
   messageType: 'text' | 'media' | 'interactive';
+  messageType: 'text' | 'media' | 'contact';
+  messageType: 'text' | 'media' | 'location';
   mediaType?: string;
   mediaUrl?: string;
   mediaBase64?: string;
@@ -72,6 +81,11 @@ export interface SendMessagePayload {
   caption?: string;
   isPrivate?: boolean;
   interactive?: InteractiveMenuPayload;
+  contactName?: string;
+  contactPhone?: string;
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
 }
 
 export interface User {
