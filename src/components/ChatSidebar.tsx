@@ -20,6 +20,8 @@ interface ChatSidebarProps {
   currentUserId?: string;
   onDisconnect: () => void;
   isDisconnecting?: boolean;
+  profileName?: string | null;
+  phoneNumber?: string | null;
 }
 
 export const filterChatsByAttendance = (
@@ -31,7 +33,17 @@ export const filterChatsByAttendance = (
     if (!currentUserId) {
       return [];
     }
-    return chats.filter(chat => chat.assignedTo === currentUserId);
+    return chats.filter(chat => {
+      if (!chat.assignedTo) {
+        return false;
+      }
+
+      if (Array.isArray(chat.assignedTo)) {
+        return chat.assignedTo.includes(currentUserId);
+      }
+
+      return chat.assignedTo === currentUserId;
+    });
   }
 
   if (filter === "in_service") {
@@ -61,6 +73,8 @@ export const ChatSidebar = ({
   currentUserId,
   onDisconnect,
   isDisconnecting,
+  profileName,
+  phoneNumber,
 }: ChatSidebarProps) => {
   const navigate = useNavigate();
   const getInitials = (name: string) => {
@@ -71,6 +85,10 @@ export const ChatSidebar = ({
       .toUpperCase()
       .slice(0, 2);
   };
+
+  const displayProfileName = profileName?.trim() || "Perfil sem nome";
+  const displayPhoneNumber = phoneNumber?.trim() || "Número não disponível";
+  const profileInitial = displayProfileName.charAt(0).toUpperCase() || "U";
 
   const getAssignedLabels = (chat: Chat) => {
     if (chat.assignedUserNames && chat.assignedUserNames.length > 0) {
@@ -106,9 +124,17 @@ export const ChatSidebar = ({
       <div className="bg-[hsl(var(--whatsapp-header))] p-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Avatar className="w-10 h-10">
-            <AvatarFallback className="bg-primary/20 text-primary">U</AvatarFallback>
+            <AvatarFallback className="bg-primary/20 text-primary">{profileInitial}</AvatarFallback>
           </Avatar>
-          <h1 className="text-lg font-semibold text-primary-foreground">WhatsApp</h1>
+          <div>
+            <h1 className="text-lg font-semibold text-primary-foreground">WhatsApp</h1>
+            <p className="text-sm text-primary-foreground/80" data-testid="sidebar-profile-name">
+              {displayProfileName}
+            </p>
+            <p className="text-xs text-primary-foreground/70" data-testid="sidebar-phone-number">
+              {displayPhoneNumber}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button
