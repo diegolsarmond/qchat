@@ -138,6 +138,41 @@ const Index = ({ user }: IndexProps) => {
         )
         .subscribe();
 
+      const handleMessageChange = (payload: any) => {
+        console.log('Message change:', payload);
+        const mappedMessage = mapApiMessage(payload.new as any);
+        const previewContent = mappedMessage.messageType === 'text'
+          ? mappedMessage.content
+          : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
+
+        setChats(prevChats => prevChats.map(chat =>
+          chat.id === mappedMessage.chatId
+            ? { ...chat, lastMessage: previewContent, timestamp: mappedMessage.timestamp }
+            : chat
+        ));
+
+        if (selectedChat && payload.new.chat_id === selectedChat.id) {
+          let appended = false;
+          setMessages(prev => {
+            const index = prev.findIndex(message => message.id === mappedMessage.id);
+            if (index === -1) {
+              appended = true;
+              return [...prev, mappedMessage];
+            }
+            const next = [...prev];
+            next[index] = { ...next[index], ...mappedMessage };
+            return next;
+          });
+
+          if (appended) {
+            setMessagePagination(prev => ({
+              ...prev,
+              offset: prev.offset + 1,
+            }));
+          }
+        }
+      };
+
       const messagesChannel = supabase
         .channel('messages-changes')
         .on(
@@ -147,37 +182,16 @@ const Index = ({ user }: IndexProps) => {
             schema: 'public',
             table: 'messages'
           },
-          (payload) => {
-            console.log('New message:', payload);
-            const mappedMessage = mapApiMessage(payload.new as any);
-            const previewContent = mappedMessage.messageType === 'text'
-              ? mappedMessage.content
-              : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
-
-            setChats(prevChats => prevChats.map(chat =>
-              chat.id === mappedMessage.chatId
-                ? { ...chat, lastMessage: previewContent, timestamp: mappedMessage.timestamp }
-                : chat
-            ));
-
-            if (selectedChat && payload.new.chat_id === selectedChat.id) {
-              let appended = false;
-              setMessages(prev => {
-                if (prev.some(message => message.id === mappedMessage.id)) {
-                  return prev;
-                }
-                appended = true;
-                return [...prev, mappedMessage];
-              });
-
-              if (appended) {
-                setMessagePagination(prev => ({
-                  ...prev,
-                  offset: prev.offset + 1,
-                }));
-              }
-            }
-          }
+          handleMessageChange
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages'
+          },
+          handleMessageChange
         )
         .subscribe();
 
