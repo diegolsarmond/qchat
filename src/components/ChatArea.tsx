@@ -472,6 +472,7 @@ export const ChatArea = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const orderedMessages = useMemo(() => [...messages], [messages]);
+  const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
   const audioSources = useMemo(() => {
     const map = new Map<string, AudioSource>();
     orderedMessages.forEach((message) => {
