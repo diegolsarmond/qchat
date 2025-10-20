@@ -268,8 +268,6 @@ const inferAudioMimeType = (message: Message) => {
 };
 
 type AudioSource = { url: string; shouldRevoke: boolean };
-type CachedAudioSource = { source: AudioSource; signature: string };
-
 type CachedAudioSource = {
   source: AudioSource;
   signature: string | null;
@@ -508,6 +506,7 @@ export const ChatArea = ({
   const { audioSources, urlsToRevoke } = useMemo(() => {
     const previousCache = audioSourceCacheRef.current;
     const nextCache = new Map<string, CachedAudioSource>();
+    const exposedSources = new Map<string, AudioSource>();
     const urlsToRevoke: string[] = [];
     const remainingPreviousIds = new Set(previousCache.keys());
 
@@ -515,60 +514,18 @@ export const ChatArea = ({
       remainingPreviousIds.delete(message.id);
       const isAudioMessage =
         message.messageType === "media" &&
-        (message.mediaType === "audio" || message.mediaType === "ptt");
+        (message.mediaType === "audio" || message.mediaType === "ptt" || message.mediaType === "voice");
 
       if (!isAudioMessage) {
-        const cached = previousCache.get(message.id);
-        if (cached?.source.shouldRevoke) {
-          urlsToRevoke.push(cached.source.url);
-  const audioSourcesRef = useRef<Map<string, AudioSource>>(new Map());
-  const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
-  const audioSources = useMemo(() => {
-    const previousSources = audioSourcesRef.current;
-    const nextSources = new Map<string, CachedAudioSource>();
-    const exposedSources = new Map<string, AudioSource>();
-    const activeIds = new Set<string>();
-
-    orderedMessages.forEach((message) => {
-      if (
-        message.messageType !== "media" ||
-        (message.mediaType !== "audio" && message.mediaType !== "ptt" && message.mediaType !== "voice")
-      ) {
-        const signature = getAudioSignature(message);
-        let cachedSource = previousSources.get(message.id);
-
-        if (cachedSource && cachedSource.signature !== signature) {
-          if (cachedSource.source.shouldRevoke) {
-            if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
-              URL.revokeObjectURL(cachedSource.source.url);
-            }
-          }
-          cachedSource = undefined;
-        }
-
-        if (!cachedSource) {
-          const resolvedSource = resolveAudioSource(message);
-          if (resolvedSource) {
-            cachedSource = {
-              source: resolvedSource,
-              signature,
-            };
-          }
-        }
-
-        if (cachedSource) {
-          nextSources.set(message.id, cachedSource);
-          exposedSources.set(message.id, cachedSource.source);
-          activeIds.add(message.id);
-        }
         return;
       }
 
-      const signature = message.mediaUrl ?? message.mediaBase64 ?? "";
+      const signature = getAudioSignature(message);
       const cached = previousCache.get(message.id);
 
       if (cached && cached.signature === signature) {
         nextCache.set(message.id, cached);
+        exposedSources.set(message.id, cached.source);
         return;
       }
 
@@ -576,47 +533,29 @@ export const ChatArea = ({
         urlsToRevoke.push(cached.source.url);
       }
 
-      const source = resolveAudioSource(message);
-      if (source) {
-        nextCache.set(message.id, { source, signature });
+      const resolvedSource = resolveAudioSource(message);
+      if (resolvedSource) {
+        const cachedSource: CachedAudioSource = {
+          source: resolvedSource,
+          signature,
+        };
+        nextCache.set(message.id, cachedSource);
+        exposedSources.set(message.id, resolvedSource);
       }
     });
 
-    previousSources.forEach((cachedSource, id) => {
-      if (!activeIds.has(id) && cachedSource.source.shouldRevoke) {
-        if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
-          URL.revokeObjectURL(cachedSource.source.url);
-        }
-        return;
-      }
-      const source = resolveAudioSource(message);
-      if (source) {
-        map.set(message.id, source);
+    remainingPreviousIds.forEach((id) => {
+      const cached = previousCache.get(id);
+      if (cached?.source.shouldRevoke) {
+        urlsToRevoke.push(cached.source.url);
       }
     });
-    return map;
+
+    audioSourceCacheRef.current = nextCache;
+
+    return { audioSources: exposedSources, urlsToRevoke };
   }, [orderedMessages]);
   const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
-
-  const audioSources = useMemo(() => {
-    const map = new Map<string, AudioSource>();
-    orderedMessages.forEach((message) => {
-      if (message.messageType !== "media") {
-        return;
-      }
-      const type = message.mediaType?.toLowerCase();
-      if (type !== "audio" && type !== "ptt" && type !== "voice") {
-        return;
-      }
-      const source = resolveAudioSource(message);
-      if (source) {
-        map.set(message.id, source);
-      }
-    });
-
-    audioSourcesRef.current = nextSources;
-    return exposedSources;
-  }, [orderedMessages]);
 
   useEffect(() => {
     onSendMessageRef.current = onSendMessage;
@@ -641,10 +580,8 @@ export const ChatArea = ({
         return;
       }
       audioSourceCacheRef.current.forEach(({ source }) => {
-
-      audioSourcesRef.current.forEach((cachedSource) => {
-        if (cachedSource.source.shouldRevoke) {
-          URL.revokeObjectURL(cachedSource.source.url);
+        if (source.shouldRevoke) {
+          URL.revokeObjectURL(source.url);
         }
       });
     };
@@ -1278,14 +1215,14 @@ export const ChatArea = ({
           {orderedMessages.map((message) => {
             const isAudioMessage =
               message.messageType === "media" &&
-              (message.mediaType === "audio" || message.mediaType === "ptt");
+              (message.mediaType === "audio" || message.mediaType === "ptt" || message.mediaType === "voice");
             const audioSource = isAudioMessage ? audioSources.get(message.id) : undefined;
             const fallbackLabel = `[${message.mediaType === "ptt" ? "ptt" : "audio"}]`;
             const caption = message.caption?.trim() || message.content?.trim() || fallbackLabel;
 
             return (
               <div
-              className={`
+                className={`
                   max-w-[65%] rounded-lg p-2 px-3 shadow-sm
                   ${message.from === 'me'
                     ? 'bg-[hsl(var(--whatsapp-message-out))]'
@@ -1301,8 +1238,8 @@ export const ChatArea = ({
                   {message.from === 'me' && <MessageStatus status={message.status} />}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
@@ -1483,15 +1420,18 @@ export const ChatArea = ({
           <List className="w-5 h-5" />
         </Button>
 
-        {isRecording ? (
-            showContactForm ? 'bg-white/20 text-primary' : ''
-          }`}
-          onClick={handleToggleContactForm}
-          aria-label={showContactForm ? 'Fechar formulário de contato' : 'Abrir formulário de contato'}
-          disabled={isRecording}
-        >
-          <UserPlus className="w-5 h-5" />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`text-primary-foreground hover:bg-white/10 ${
+              showContactForm ? 'bg-white/20 text-primary' : ''
+            }`}
+            onClick={handleToggleContactForm}
+            aria-label={showContactForm ? 'Fechar formulário de contato' : 'Abrir formulário de contato'}
+            disabled={isRecording}
+          >
+            <UserPlus className="w-5 h-5" />
+          </Button>
 
         {showContactForm ? (
           <div className="flex flex-1 gap-2">
