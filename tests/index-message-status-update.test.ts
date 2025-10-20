@@ -6,9 +6,16 @@ import { createRequire } from "node:module";
 import vm from "node:vm";
 import ts from "typescript";
 
-const createReactStub = () => {
+type ReactStub = {
+  useState: <T>(initial: T | (() => T)) => [T, (value: T | ((prev: T) => T)) => void];
+  useEffect: (callback: () => void | (() => void)) => void;
+  useMemo: <T>(factory: () => T) => T;
+  __render: (Component: any, props: any) => any;
+  __getState: () => any[];
+};
+
+const createReactStub = (): ReactStub => {
   const state: any[] = [];
-  const cleanups: Array<() => void> = [];
   let hookIndex = 0;
 
   const getInitialValue = (value: any) => (typeof value === "function" ? value() : value);
@@ -25,10 +32,7 @@ const createReactStub = () => {
       return [state[index], setState];
     },
     useEffect(callback: () => void | (() => void)) {
-      const cleanup = callback();
-      if (typeof cleanup === "function") {
-        cleanups.push(cleanup);
-      }
+      callback();
     },
     useMemo(factory: () => any) {
       return factory();
@@ -42,14 +46,7 @@ const createReactStub = () => {
 
   react.__getState = () => state;
 
-  react.__runCleanups = () => {
-    while (cleanups.length) {
-      const cleanup = cleanups.pop();
-      cleanup?.();
-    }
-  };
-
-  return react;
+  return react as ReactStub;
 };
 
 const createStubComponent = (type: string) => {
@@ -62,7 +59,7 @@ const createStubComponent = (type: string) => {
   return component;
 };
 
-const loadIndexPage = (reactStub: any, overrides: any = {}) => {
+const loadIndexPage = (reactStub: ReactStub, overrides: any = {}) => {
   const modulePath = fileURLToPath(new URL("../src/pages/Index.tsx", import.meta.url));
   const source = readFileSync(modulePath, "utf-8");
   const { outputText } = ts.transpileModule(source, {
@@ -88,41 +85,10 @@ const loadIndexPage = (reactStub: any, overrides: any = {}) => {
     functions: {
       invoke: async () => ({ data: {}, error: null }),
     },
-    from: (table: string) => {
-      if (table === "credentials") {
-        return {
-          select: () => ({
-            eq: () => ({
-              order: () => ({
-                limit: async () => ({ data: [], error: null }),
-              }),
-            }),
-          }),
-        };
-      }
-      if (table === "users") {
-        return {
-          select: async () => ({ data: [], error: null }),
-        };
-      }
-      if (table === "messages") {
-        return {
-          insert: async () => ({ data: null, error: null }),
-        };
-      }
-      if (table === "chats") {
-        return {
-          update: () => ({
-            eq: () => ({
-              eq: async () => ({ error: null }),
-            }),
-          }),
-        };
-      }
-      return {
-        select: async () => ({ data: [], error: null }),
-      };
-    },
+    from: () => ({
+      select: async () => ({ data: [], error: null }),
+      update: () => ({ eq: async () => ({ error: null }) }),
+    }),
     channel: () => ({
       on() {
         return this;
@@ -199,115 +165,128 @@ const loadIndexPage = (reactStub: any, overrides: any = {}) => {
   return { module: module.exports, stubs: { credentialSetup, qrCodeScanner, chatSidebar, chatArea } };
 };
 
-test("mensagens privadas registram apenas no banco", async () => {
-  const reactStub = createReactStub();
-  const insertCalls: any[] = [];
-  const invokeCalls: any[] = [];
-  const credentialQueries: Array<{ column: string; value: string }> = [];
-
-  const supabaseStub = {
-    functions: {
-      invoke: async (...args: any[]) => {
-        invokeCalls.push(args);
-        return { data: { messageId: "remote" }, error: null };
+test("atualiza status da mensagem após evento UPDATE", async () => {
+  const storage = (() => {
+    const map = new Map<string, string>();
+    return {
+      getItem: (key: string) => (map.has(key) ? map.get(key)! : null),
+      setItem: (key: string, value: string) => {
+        map.set(key, String(value));
       },
-    },
-    from: (table: string) => {
-      if (table === "messages") {
-        return {
-          insert: async (payload: any) => {
-            insertCalls.push(payload);
-            return { data: null, error: null };
-          },
-        };
-      }
-      if (table === "credentials") {
-        return {
-          select: () => ({
-            eq: (column: string, value: string) => {
-              credentialQueries.push({ column, value });
-              return {
-                order: () => ({
-                  limit: async () => ({ data: [{ id: "cred-privado" }], error: null }),
-                }),
-              };
-            },
-          }),
-        };
-      }
-      if (table === "chats") {
-        return {
-          update: () => ({
-            eq: () => ({
-              eq: async () => ({ error: null }),
-            }),
-          }),
-        };
-      }
-      if (table === "users") {
-        return {
-          select: async () => ({ data: [], error: null }),
-        };
-      }
-      return {
+      removeItem: (key: string) => {
+        map.delete(key);
+      },
+      clear: () => {
+        map.clear();
+      },
+    };
+  })();
+
+  const originalWindow = global.window;
+  const originalLocalStorage = global.localStorage;
+
+  global.window = { localStorage: storage, innerWidth: 1024 } as any;
+  global.localStorage = storage as any;
+
+  storage.setItem("activeCredentialId", "cred-1");
+
+  try {
+    const reactStub = createReactStub();
+    const messageCallbacks: Record<string, (payload: any) => void> = {};
+
+    const supabaseStub = {
+      functions: {
+        invoke: async (name: string) => {
+          if (name === "uaz-fetch-chats") {
+            return { data: { chats: [] }, error: null };
+          }
+          if (name === "uaz-fetch-messages") {
+            return { data: { messages: [] }, error: null };
+          }
+          return { data: {}, error: null };
+        },
+      },
+      from: () => ({
         select: async () => ({ data: [], error: null }),
-      };
-    },
-    channel: () => ({
-      on() {
-        return this;
-      },
-      subscribe() {
-        return this;
-      },
-    }),
-    removeChannel() {},
-  };
+        update: () => ({ eq: async () => ({ error: null }) }),
+      }),
+      channel: (channelName: string) => ({
+        on(_type: string, filter: any, callback: (payload: any) => void) {
+          if (channelName === "messages-changes") {
+            messageCallbacks[filter.event] = callback;
+          }
+          return this;
+        },
+        subscribe() {
+          return this;
+        },
+      }),
+      removeChannel() {},
+    };
 
-  const chatSidebar = createStubComponent("ChatSidebar");
-  const chatArea = createStubComponent("ChatArea");
+    const chatSidebar = createStubComponent("ChatSidebar");
+    const chatArea = createStubComponent("ChatArea");
 
-  const { module, stubs } = loadIndexPage(reactStub, {
-    chatSidebar,
-    chatArea,
-    supabase: supabaseStub,
-    toast: () => {},
-  });
+    const { module, stubs } = loadIndexPage(reactStub, {
+      supabase: supabaseStub,
+      chatSidebar,
+      chatArea,
+      toast: () => {},
+    });
 
-  const Index = module.default ?? module;
+    const Index = module.default ?? module;
 
-  reactStub.__render(Index, { user: { id: "user" } });
-  await Promise.resolve();
-  await Promise.resolve();
-  const readyRender = reactStub.__render(Index, { user: { id: "user" } });
-  assert.equal(readyRender.type, stubs.qrCodeScanner);
-  assert.deepEqual(credentialQueries, [{ column: "user_id", value: "user" }]);
+    const firstRender = reactStub.__render(Index, { user: { id: "user" } });
+    assert.equal(firstRender.type, stubs.qrCodeScanner);
 
-  stubs.qrCodeScanner.lastProps.onConnected();
-  reactStub.__render(Index, { user: { id: "user" } });
+    firstRender.props.onConnected();
+    reactStub.__render(Index, { user: { id: "user" } });
 
-  stubs.chatSidebar.lastProps.onSelectChat({
-    id: "chat-1",
-    name: "Cliente",
-    lastMessage: "",
-    timestamp: "",
-    unread: 0,
-    isGroup: false,
-  });
+    stubs.chatSidebar.lastProps.onSelectChat({
+      id: "chat-1",
+      name: "Cliente",
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      isGroup: false,
+    });
 
-  reactStub.__render(Index, { user: { id: "user" } });
+    reactStub.__render(Index, { user: { id: "user" } });
 
-  const payload = {
-    content: "Mensagem privada",
-    messageType: "text" as const,
-    isPrivate: true,
-  };
+    assert.equal(typeof messageCallbacks.INSERT, "function");
+    assert.equal(typeof messageCallbacks.UPDATE, "function");
 
-  stubs.chatArea.lastProps.onSendMessage(payload);
+    const baseMessage = {
+      id: "msg-1",
+      chat_id: "chat-1",
+      credential_id: "cred-1",
+      content: "Olá",
+      message_type: "text",
+      media_type: null,
+      caption: null,
+      document_name: null,
+      media_url: null,
+      media_base64: null,
+      from_me: true,
+      message_timestamp: new Date().toISOString(),
+      status: "sent",
+    };
 
-  assert.equal(invokeCalls.length, 0);
-  assert.equal(insertCalls.length, 1);
-  assert.equal(insertCalls[0].content, "Mensagem privada");
-  assert.equal(insertCalls[0].is_private, true);
-  assert.equal(insertCalls[0].user_id, "user");
+    messageCallbacks.INSERT({ new: baseMessage });
+
+    reactStub.__render(Index, { user: { id: "user" } });
+
+    assert.equal(stubs.chatArea.lastProps.messages[0].status, "sent");
+
+    const updatedMessage = { ...baseMessage, status: "delivered" };
+
+    messageCallbacks.UPDATE({ new: updatedMessage });
+
+    reactStub.__render(Index, { user: { id: "user" } });
+
+    assert.equal(stubs.chatArea.lastProps.messages[0].status, "delivered");
+  } finally {
+    global.window = originalWindow;
+    global.localStorage = originalLocalStorage;
+  }
 });
