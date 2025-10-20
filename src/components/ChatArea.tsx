@@ -17,7 +17,8 @@ import {
   ArrowLeft,
   X,
   Lock,
-  Unlock
+  Unlock,
+  Download
 } from "lucide-react";
 import { Chat, Message, SendMessagePayload } from "@/types/whatsapp";
 import {
@@ -115,6 +116,61 @@ const blobToBase64 = (blob: Blob) =>
     reader.onerror = () => reject(new Error("Failed to read blob"));
     reader.readAsDataURL(blob);
   });
+
+const base64ToUint8Array = (value: string) => {
+  if (typeof atob === "function") {
+    const binary = atob(value);
+    const length = binary.length;
+    const bytes = new Uint8Array(length);
+    for (let index = 0; index < length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  }
+  const bufferCtor = (globalThis as { Buffer?: { from: (data: string, encoding: string) => Uint8Array } }).Buffer;
+  if (bufferCtor) {
+    return bufferCtor.from(value, "base64");
+  }
+  return new Uint8Array();
+};
+
+const inferAudioMimeType = (message: Message) => {
+  const name = message.documentName?.toLowerCase() ?? "";
+  if (name.endsWith(".webm")) return "audio/webm";
+  if (name.endsWith(".mp3")) return "audio/mpeg";
+  if (name.endsWith(".wav")) return "audio/wav";
+  if (name.endsWith(".m4a")) return "audio/mp4";
+  if (name.endsWith(".ogg")) return "audio/ogg";
+  if (message.mediaType === "ptt") return "audio/ogg";
+  return "audio/ogg";
+};
+
+type AudioSource = { url: string; shouldRevoke: boolean };
+
+const resolveAudioSource = (message: Message): AudioSource | null => {
+  if (message.mediaUrl) {
+    return { url: message.mediaUrl, shouldRevoke: false };
+  }
+  if (!message.mediaBase64) {
+    return null;
+  }
+  const base64 = message.mediaBase64.includes(",")
+    ? message.mediaBase64.split(",").pop() ?? ""
+    : message.mediaBase64;
+  if (!base64) {
+    return null;
+  }
+  const bytes = base64ToUint8Array(base64);
+  if (!bytes.length) {
+    return null;
+  }
+  const blob = new Blob([bytes], { type: inferAudioMimeType(message) });
+  if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+    return { url: `data:${blob.type};base64,${base64}`, shouldRevoke: false };
+  }
+  const url = URL.createObjectURL(blob);
+  return { url, shouldRevoke: true };
+};
 
 interface AudioRecorderOptions {
   getOnSendMessage: () => (payload: SendMessagePayload) => void;
@@ -291,6 +347,21 @@ export const ChatArea = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrivateRef = useRef(isPrivate);
   const orderedMessages = useMemo(() => [...messages], [messages]);
+  const audioSources = useMemo(() => {
+    const map = new Map<string, AudioSource>();
+    orderedMessages.forEach((message) => {
+      if (
+        message.messageType === "media" &&
+        (message.mediaType === "audio" || message.mediaType === "ptt")
+      ) {
+        const source = resolveAudioSource(message);
+        if (source) {
+          map.set(message.id, source);
+        }
+      }
+    });
+    return map;
+  }, [orderedMessages]);
 
   useEffect(() => {
     onSendMessageRef.current = onSendMessage;
@@ -299,6 +370,23 @@ export const ChatArea = ({
   useEffect(() => {
     isPrivateRef.current = isPrivate;
   }, [isPrivate]);
+
+  useEffect(() => {
+    const urls: string[] = [];
+    audioSources.forEach((source) => {
+      if (source.shouldRevoke) {
+        urls.push(source.url);
+      }
+    });
+    return () => {
+      if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
+        return;
+      }
+      urls.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+    };
+  }, [audioSources]);
 
   if (!recorderRef.current) {
     recorderRef.current = createAudioRecorder({
@@ -516,30 +604,58 @@ export const ChatArea = ({
               </Button>
             </div>
           )}
-          {orderedMessages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.from === 'me' ? 'justify-end' : 'justify-start'}`}
-            >
+          {orderedMessages.map((message) => {
+            const isAudioMessage =
+              message.messageType === "media" &&
+              (message.mediaType === "audio" || message.mediaType === "ptt");
+            const audioSource = isAudioMessage ? audioSources.get(message.id) : undefined;
+            const fallbackLabel = `[${message.mediaType === "ptt" ? "ptt" : "audio"}]`;
+            const caption = message.caption?.trim() || message.content?.trim() || fallbackLabel;
+
+            return (
               <div
-                className={`
-                  max-w-[65%] rounded-lg p-2 px-3 shadow-sm
-                  ${message.from === 'me' 
-                    ? 'bg-[hsl(var(--whatsapp-message-out))]' 
-                    : 'bg-[hsl(var(--whatsapp-message-in))]'
-                  }
-                `}
+                key={message.id}
+                className={`flex ${message.from === 'me' ? 'justify-end' : 'justify-start'}`}
               >
-                <p className="text-sm break-words">{message.content}</p>
-                <div className="flex items-center justify-end gap-1 mt-1">
-                  <span className="text-xs text-muted-foreground">
-                    {message.timestamp}
-                  </span>
-                  {message.from === 'me' && <MessageStatus status={message.status} />}
+                <div
+                  className={`
+                    max-w-[65%] rounded-lg p-2 px-3 shadow-sm
+                    ${message.from === 'me'
+                      ? 'bg-[hsl(var(--whatsapp-message-out))]'
+                      : 'bg-[hsl(var(--whatsapp-message-in))]'
+                    }
+                  `}
+                >
+                  {isAudioMessage && audioSource ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <audio controls src={audioSource.url} className="max-w-full" />
+                        <Button
+                          asChild
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Baixar áudio"
+                        >
+                          <a href={audioSource.url} download={message.documentName ?? "audio.ogg"}>
+                            <Download className="w-4 h-4" />
+                          </a>
+                        </Button>
+                      </div>
+                      <p className="text-sm break-words">{caption}</p>
+                    </div>
+                  ) : (
+                    <p className="text-sm break-words">{message.content}</p>
+                  )}
+                  <div className="flex items-center justify-end gap-1 mt-1">
+                    <span className="text-xs text-muted-foreground">
+                      {message.timestamp}
+                    </span>
+                    {message.from === 'me' && <MessageStatus status={message.status} />}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
