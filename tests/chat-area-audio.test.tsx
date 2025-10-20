@@ -171,3 +171,47 @@ test("renderiza áudio e download para mensagens ptt", () => {
   assert.ok(html.includes("download=\"voz.ogg\""));
   assert.ok(html.includes("[ptt]"));
 });
+
+test("renderiza áudio quando mediaUrl está presente", () => {
+  const chat: Chat = {
+    id: "chat-audio-url",
+    name: "Cliente",
+    lastMessage: "",
+    timestamp: "10:00",
+    unread: 0,
+    isGroup: false,
+    attendanceStatus: "waiting",
+  };
+
+  const messages: Message[] = [
+    {
+      id: "mensagem-audio-url",
+      chatId: "chat-audio-url",
+      content: "",
+      timestamp: "10:01",
+      from: "them",
+      messageType: "media",
+      mediaType: "audio",
+      mediaUrl: "https://example.com/audio.ogg",
+    },
+  ];
+
+  const html = renderToStaticMarkup(
+    <ChatArea
+      chat={chat}
+      messages={messages}
+      onSendMessage={() => {}}
+      onAssignChat={() => {}}
+      onLoadMoreMessages={() => {}}
+      hasMoreMessages={false}
+      isLoadingMoreMessages={false}
+      isPrependingMessages={false}
+      showSidebar
+      onShowSidebar={() => {}}
+    />
+  );
+
+  assert.ok(html.includes("<audio controls"));
+  assert.ok(html.includes("src=\"https://example.com/audio.ogg\""));
+  assert.ok(html.includes("Baixar media"));
+});

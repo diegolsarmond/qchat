@@ -467,6 +467,23 @@ export const ChatArea = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const orderedMessages = useMemo(() => [...messages], [messages]);
+  const audioSources = useMemo(() => {
+    const map = new Map<string, AudioSource>();
+    orderedMessages.forEach((message) => {
+      if (
+        message.messageType !== "media" ||
+        (message.mediaType !== "audio" && message.mediaType !== "ptt" && message.mediaType !== "voice")
+      ) {
+        return;
+      }
+      const source = resolveAudioSource(message);
+      if (source) {
+        map.set(message.id, source);
+      }
+    });
+    return map;
+  }, [orderedMessages]);
+  const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
 
   useEffect(() => {
     onSendMessageRef.current = onSendMessage;
