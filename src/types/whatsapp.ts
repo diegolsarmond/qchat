@@ -69,6 +69,27 @@ export interface InteractiveMenuPayload {
   sections?: InteractiveMenuSection[];
 }
 
+export interface InteractiveMenuOption {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface InteractiveMenuSection {
+  title?: string;
+  rows: InteractiveMenuOption[];
+}
+
+export interface InteractiveMenuPayload {
+  header?: string;
+  body: string;
+  footer?: string;
+  type: 'buttons' | 'list';
+  button?: string;
+  buttons?: InteractiveMenuOption[];
+  sections?: InteractiveMenuSection[];
+}
+
 export interface SendMessagePayload {
   content: string;
   messageType: 'text' | 'media' | 'interactive';

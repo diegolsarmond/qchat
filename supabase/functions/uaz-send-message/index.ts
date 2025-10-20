@@ -90,6 +90,14 @@ serve(async (req) => {
     let storageDocumentName: string | null = null;
     let storageMediaUrl: string | null = null;
     let storageMediaBase64: string | null = null;
+
+    let storageContent = typeof content === 'string' ? content : '';
+    let storageMessageType: 'text' | 'media' | 'interactive' = 'text';
+    let storageMediaType: string | null = null;
+    let storageCaption: string | null = null;
+    let storageDocumentName: string | null = null;
+    let storageMediaUrl: string | null = null;
+    let storageMediaBase64: string | null = null;
     let apiPath = 'text';
     let apiBody: Record<string, unknown>;
     let storageContent = '';
@@ -160,6 +168,8 @@ serve(async (req) => {
     if (normalizedMessageType === 'interactive') {
       const rawType = typeof interactive?.type === 'string' ? interactive.type.toLowerCase() : '';
       if (rawType !== 'buttons' && rawType !== 'list') {
+        return new Response(
+          JSON.stringify({ error: 'Tipo de menu inválido' }),
         return new Response(
           JSON.stringify({ error: 'Tipo de menu inválido' }),
     if (isLocationMessage) {
@@ -306,6 +316,7 @@ serve(async (req) => {
       apiBody = buildUazInteractiveApiBody({
         phoneNumber,
         menu: sanitized,
+      });
       });
       apiPath = UAZ_CONTACT_ENDPOINT;
       apiBody = buildUazContactApiBody({
