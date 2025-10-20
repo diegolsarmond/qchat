@@ -4,21 +4,20 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { persistChats } from '../../supabase/functions/uaz-fetch-chats/upsert-chats.ts';
 
-type ChatsHandlerSetup = {
+type ContactHandlerSetup = {
   handler: (req: Request) => Promise<Response>;
   createClientCalls: unknown[][];
-  persistCalls: Array<Record<string, unknown>>;
+  updates: Array<Record<string, unknown>>;
 };
 
-const loadChatsHandler = (options?: {
+const loadContactDetailsHandler = (options?: {
   supabaseClient?: unknown;
   ensureCredentialOwnership?: (credential: unknown, userId: string, headers: Record<string, string>) => { credential: unknown; response: Response | null };
   fetchImpl?: typeof fetch;
   env?: Record<string, string>;
-}): ChatsHandlerSetup => {
-  const moduleUrl = new URL('../../supabase/functions/uaz-fetch-chats/index.ts', import.meta.url);
+}): ContactHandlerSetup => {
+  const moduleUrl = new URL('../../supabase/functions/uaz-fetch-contact-details/index.ts', import.meta.url);
   const modulePath = fileURLToPath(moduleUrl);
   const source = readFileSync(modulePath, 'utf-8');
   const { outputText } = ts.transpileModule(source, {
@@ -31,7 +30,7 @@ const loadChatsHandler = (options?: {
   });
 
   const createClientCalls: unknown[][] = [];
-  const persistCalls: Array<Record<string, unknown>> = [];
+  const updates: Array<Record<string, unknown>> = [];
   const env = options?.env ?? {
     SUPABASE_URL: 'http://supabase.local',
     SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
@@ -44,23 +43,34 @@ const loadChatsHandler = (options?: {
     from() {
       return {
         select() {
-          return this;
-        },
-        eq() {
           return {
-            single: async () => ({ data: null, error: null }),
+            eq() {
+              return {
+                eq() {
+                  return {
+                    single: async () => ({ data: { wa_chat_id: 'chat-wa-id' }, error: null }),
+                  };
+                },
+              };
+            },
           };
         },
-        order() {
-          return this;
+        update(values: Record<string, unknown>) {
+          updates.push(values);
+          return {
+            eq() {
+              return {
+                eq: () => Promise.resolve({ data: null, error: null }),
+              };
+            },
+          };
         },
-        range: async () => ({ data: [], error: null, count: 0 }),
       };
     },
   };
 
-  const ensureCredentialOwnership = options?.ensureCredentialOwnership ?? (() => ({ credential: { subdomain: 'tenant', token: 'token' }, response: null }));
-  const fetchImpl = options?.fetchImpl ?? (async () => new Response(JSON.stringify({ chats: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+  const ensureCredentialOwnership = options?.ensureCredentialOwnership ?? (() => ({ credential: { subdomain: 'tenant', token: 'token', user_id: 'user-123' }, response: null }));
+  const fetchImpl = options?.fetchImpl ?? (async () => new Response(JSON.stringify({ name: 'Cliente', image: 'https://img', phone: '5511' }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
 
   let capturedHandler: ((req: Request) => Promise<Response>) | undefined;
 
@@ -84,15 +94,6 @@ const loadChatsHandler = (options?: {
 
     if (specifier === '../_shared/credential-guard.ts') {
       return { ensureCredentialOwnership };
-    }
-
-    if (specifier === './upsert-chats.ts') {
-      return {
-        persistChats: async (payload: Record<string, unknown>) => {
-          persistCalls.push(payload);
-          return null;
-        },
-      };
     }
 
     return require(specifier);
@@ -128,86 +129,11 @@ const loadChatsHandler = (options?: {
     throw new Error('Handler não capturado');
   }
 
-  return { handler, createClientCalls, persistCalls };
+  return { handler, createClientCalls, updates };
 };
 
-test('persistChats utiliza uma única chamada ao upsert com matriz de chats', async () => {
-  let upsertCalls = 0;
-  let receivedRecords: unknown[] | undefined;
-  let receivedOptions: { onConflict: string } | undefined;
-
-  const supabaseClient = {
-    from(table: string) {
-      assert.strictEqual(table, 'chats');
-      return {
-        async upsert(records: unknown[], options: { onConflict: string }) {
-          upsertCalls += 1;
-          receivedRecords = records;
-          receivedOptions = options;
-          return { data: null, error: null };
-        },
-      };
-    },
-  };
-
-  const chats = [
-    {
-      wa_chatid: 'chat-1',
-      name: 'Primeiro Chat',
-      wa_lastMessageTextVote: 'Olá',
-      wa_lastMsgTimestamp: 123,
-      wa_unreadCount: 2,
-      image: 'https://example.com/img1.png',
-      wa_isGroup: true,
-    },
-    {
-      wa_chatid: 'chat-2',
-      wa_name: 'Segundo Chat',
-      wa_lastMessageTextVote: '',
-      wa_lastMsgTimestamp: 456,
-      wa_unreadCount: 0,
-    },
-  ];
-
-  await persistChats({
-    supabaseClient: supabaseClient as never,
-    credentialId: 'cred-123',
-    userId: 'user-456',
-    chats,
-  });
-
-  assert.strictEqual(upsertCalls, 1);
-  assert.ok(Array.isArray(receivedRecords));
-  assert.deepStrictEqual(receivedOptions, { onConflict: 'credential_id,wa_chat_id' });
-
-  assert.deepStrictEqual(receivedRecords, [
-    {
-      credential_id: 'cred-123',
-      user_id: 'user-456',
-      wa_chat_id: 'chat-1',
-      name: 'Primeiro Chat',
-      last_message: 'Olá',
-      last_message_timestamp: 123,
-      unread_count: 2,
-      avatar: 'https://example.com/img1.png',
-      is_group: true,
-    },
-    {
-      credential_id: 'cred-123',
-      user_id: 'user-456',
-      wa_chat_id: 'chat-2',
-      name: 'Segundo Chat',
-      last_message: '',
-      last_message_timestamp: 456,
-      unread_count: 0,
-      avatar: '',
-      is_group: false,
-    },
-  ]);
-});
-
-test('handler de uaz-fetch-chats rejeita requisição sem Authorization', async () => {
-  const { handler, createClientCalls } = loadChatsHandler();
+test('handler de uaz-fetch-contact-details rejeita requisição sem Authorization', async () => {
+  const { handler, createClientCalls } = loadContactDetailsHandler();
 
   const response = await handler(new Request('https://example.com', { method: 'POST' }));
 
@@ -216,11 +142,10 @@ test('handler de uaz-fetch-chats rejeita requisição sem Authorization', async 
   assert.deepEqual(await response.json(), { error: 'Credenciais ausentes' });
 });
 
-test('handler de uaz-fetch-chats processa token válido com uma única criação de cliente', async () => {
+test('handler de uaz-fetch-contact-details processa token válido e atualiza chat', async () => {
   const credentialRecord = { id: 'cred-1', user_id: 'user-123', subdomain: 'tenant', token: 'uaz-token' };
-  const dbChats = [
-    { id: 'chat-db', credential_id: 'cred-1', user_id: 'user-123', last_message_timestamp: 123 },
-  ];
+  const chatRecord = { wa_chat_id: '5511999999999@c.us' };
+  const updates: Array<Record<string, unknown>> = [];
 
   const supabaseClient = {
     auth: {
@@ -246,21 +171,41 @@ test('handler de uaz-fetch-chats processa token válido com uma única criação
       }
 
       if (table === 'chats') {
-        const query = {
+        return {
           select() {
-            return query;
+            return {
+              eq(field: string, value: string) {
+                assert.equal(field, 'id');
+                assert.equal(value, 'chat-1');
+                return {
+                  eq(field2: string, value2: string) {
+                    assert.equal(field2, 'user_id');
+                    assert.equal(value2, 'user-123');
+                    return {
+                      single: async () => ({ data: chatRecord, error: null }),
+                    };
+                  },
+                };
+              },
+            };
           },
-          eq() {
-            return query;
+          update(values: Record<string, unknown>) {
+            updates.push(values);
+            return {
+              eq(field: string, value: string) {
+                assert.equal(field, 'id');
+                assert.equal(value, 'chat-1');
+                return {
+                  eq(field2: string, value2: string) {
+                    assert.equal(field2, 'user_id');
+                    assert.equal(value2, 'user-123');
+                    return Promise.resolve({ data: null, error: null });
+                  },
+                };
+              },
+            };
           },
-          order() {
-            return query;
-          },
-          range: async () => ({ data: dbChats, error: null, count: dbChats.length }),
-          update: () => ({ eq: () => ({ eq: () => Promise.resolve({ data: null, error: null }) }) }),
         };
-
-        return query;
       }
 
       throw new Error(`Tabela inesperada: ${table}`);
@@ -270,11 +215,11 @@ test('handler de uaz-fetch-chats processa token válido com uma única criação
   const ensureCredentialOwnership = () => ({ credential: credentialRecord, response: null });
 
   const fetchImpl = async () => new Response(
-    JSON.stringify({ chats: [{ wa_chatid: 'chat-1' }] }),
+    JSON.stringify({ name: 'Cliente', image: 'https://img', phone: '5511999999999', wa_isGroup: true }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
 
-  const { handler, createClientCalls, persistCalls } = loadChatsHandler({
+  const { handler, createClientCalls } = loadContactDetailsHandler({
     supabaseClient,
     ensureCredentialOwnership,
     fetchImpl,
@@ -283,19 +228,21 @@ test('handler de uaz-fetch-chats processa token válido com uma única criação
   const response = await handler(new Request('https://example.com', {
     method: 'POST',
     headers: { Authorization: 'Bearer valid-token' },
-    body: JSON.stringify({ credentialId: 'cred-1', limit: 1, offset: 0 }),
+    body: JSON.stringify({ credentialId: 'cred-1', chatId: 'chat-1' }),
   }));
 
   assert.equal(createClientCalls.length, 1);
-  assert.deepEqual(createClientCalls[0][0], 'http://supabase.local');
+  assert.equal(updates.length, 1);
+  const [firstUpdate] = updates as Array<{ name?: string; avatar?: string }>;
+  assert.equal(firstUpdate?.name, 'Cliente');
+  assert.equal(firstUpdate?.avatar, 'https://img');
+
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.deepEqual(payload, {
-    chats: dbChats,
-    total: dbChats.length,
-    hasMore: false,
+    name: 'Cliente',
+    avatar: 'https://img',
+    phone: '5511999999999',
+    isGroup: true,
   });
-  assert.equal(persistCalls.length, 1);
-  const [firstPersist] = persistCalls;
-  assert.equal((firstPersist as { credentialId: string }).credentialId, 'cred-1');
 });
