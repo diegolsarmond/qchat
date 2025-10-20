@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolveMessageStorage } from "../message-storage.ts";
 import { ensureCredentialOwnership } from "../_shared/credential-guard.ts";
+import { upsertFetchedMessages } from "./upsert-messages.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -159,49 +159,16 @@ serve(async (req) => {
 
     const messagesData = await messagesResponse.json();
     const messages = messagesData.messages || [];
-    
+
     console.log('[UAZ Fetch Messages] Found messages:', messages.length);
 
-    // Upsert messages to database
-    for (const msg of messages) {
-      try {
-        const storage = resolveMessageStorage({
-          content: msg.text || '',
-          messageType: msg.messageType || 'text',
-          mediaType: msg.mediaType || null,
-          caption: msg.caption || null,
-          documentName: msg.documentName || null,
-          mediaUrl: msg.mediaUrl || msg.url || null,
-          mediaBase64: msg.mediaBase64 || msg.base64 || null,
-        });
-
-        await supabaseClient
-          .from('messages')
-          .upsert({
-            chat_id: chatId,
-            credential_id: credentialId,
-            user_id: authData.user.id,
-            wa_message_id: msg.messageid,
-            content: storage.content,
-            message_type: storage.messageType,
-            media_type: storage.mediaType,
-            caption: storage.caption,
-            document_name: storage.documentName,
-            media_url: storage.mediaUrl,
-            media_base64: storage.mediaBase64,
-            from_me: msg.fromMe || false,
-            sender: msg.sender || '',
-            sender_name: msg.senderName || '',
-            status: msg.status || '',
-            message_timestamp: msg.messageTimestamp || 0,
-            is_private: Boolean(msg.isPrivate),
-          }, {
-            onConflict: 'chat_id,wa_message_id'
-          });
-      } catch (upsertError) {
-        console.error('[UAZ Fetch Messages] Failed to upsert message:', msg.messageid, upsertError);
-      }
-    }
+    await upsertFetchedMessages({
+      supabaseClient,
+      messages,
+      chatId,
+      credentialId,
+      userId: authData.user.id,
+    });
 
     // Fetch updated messages from database with pagination
     const { data: dbMessages, error: dbError, count } = await supabaseClient
