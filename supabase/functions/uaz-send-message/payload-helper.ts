@@ -14,6 +14,14 @@ export interface UazContactPayloadParams {
 }
 
 export const UAZ_CONTACT_ENDPOINT = 'contact';
+export interface UazLocationPayloadParams {
+  phoneNumber: string;
+  latitude: number;
+  longitude: number;
+  locationName?: string | null;
+}
+
+export const UAZ_LOCATION_API_PATH = 'location';
 
 export const buildUazMediaApiBody = ({
   phoneNumber,
@@ -24,6 +32,8 @@ export const buildUazMediaApiBody = ({
   documentName,
 }: UazMediaPayloadParams): Record<string, unknown> => {
   const file = mediaUrl ?? mediaBase64;
+  const normalizedMediaType =
+    mediaType.toLowerCase() === 'ptt' ? 'audio' : mediaType;
 
   if (!file) {
     throw new Error('Origem da mídia é obrigatória');
@@ -31,7 +41,7 @@ export const buildUazMediaApiBody = ({
 
   const payload: Record<string, unknown> = {
     number: phoneNumber,
-    type: mediaType,
+    type: normalizedMediaType,
     file,
   };
 
@@ -55,3 +65,26 @@ export const buildUazContactApiBody = ({
   name: contactName,
   phone: contactPhone,
 });
+export const buildUazLocationApiBody = ({
+  phoneNumber,
+  latitude,
+  longitude,
+  locationName,
+}: UazLocationPayloadParams): Record<string, unknown> => {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    throw new Error('Coordenadas inválidas');
+  }
+
+  const payload: Record<string, unknown> = {
+    number: phoneNumber,
+    latitude,
+    longitude,
+  };
+
+  const trimmedName = locationName?.trim();
+  if (trimmedName) {
+    payload.locationName = trimmedName;
+  }
+
+  return payload;
+};
