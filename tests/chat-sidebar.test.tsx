@@ -107,6 +107,9 @@ const collectChildren = (node: any) => {
 };
 
 const elementContainsText = (node: any, text: string): boolean => {
+  if (Array.isArray(node)) {
+    return node.some(child => elementContainsText(child, text));
+  }
   if (typeof node === "string") {
     return node.toString().includes(text);
   }
@@ -203,6 +206,37 @@ test("ChatSidebar chama signOut e redireciona ao clicar em Sair", async () => {
 
   signOutHandler = async () => {};
   navigateHandler = () => {};
+});
+
+test("ChatSidebar exibe rótulos de atribuição quando disponíveis", () => {
+  const { ChatSidebar } = loadChatSidebar();
+
+  const chat = {
+    id: "1",
+    name: "Cliente Importante",
+    lastMessage: "Precisamos falar",
+    timestamp: "11:30",
+    unread: 2,
+    isGroup: false,
+    attendanceStatus: "in_service",
+    assignedUserNames: ["Ana", "Carlos"],
+  };
+
+  const element = ChatSidebar({
+    chats: [chat],
+    selectedChat: null,
+    onSelectChat: () => {},
+    onAssignChat: () => {},
+    showSidebar: true,
+    onToggleSidebar: () => {},
+    activeFilter: "all",
+    onFilterChange: () => {},
+    currentUserId: "agent-123",
+  });
+
+  assert.ok(elementContainsText(element, "Atribuído:"), "Legenda de atribuição não foi renderizada");
+  assert.ok(elementContainsText(element, "Ana"), "Nome do primeiro agente não foi exibido");
+  assert.ok(elementContainsText(element, "Carlos"), "Nome do segundo agente não foi exibido");
 });
 
 test("filterChatsByAttendance filtra conversas pelo status", () => {
