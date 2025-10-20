@@ -556,6 +556,28 @@ export const ChatArea = ({
     return { audioSources: exposedSources, urlsToCleanup };
   }, [orderedMessages]);
   const urlsToRevoke = urlsToCleanup;
+      const resolvedSource = resolveAudioSource(message);
+      if (resolvedSource) {
+        const cachedSource: CachedAudioSource = {
+          source: resolvedSource,
+          signature,
+        };
+        nextCache.set(message.id, cachedSource);
+        exposedSources.set(message.id, resolvedSource);
+      }
+    });
+
+    remainingPreviousIds.forEach((id) => {
+      const cached = previousCache.get(id);
+      if (cached?.source.shouldRevoke) {
+        urlsToRevoke.push(cached.source.url);
+      }
+    });
+
+    audioSourceCacheRef.current = nextCache;
+
+    return { audioSources: exposedSources, urlsToRevoke };
+  }, [orderedMessages]);
   const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
 
   useEffect(() => {
@@ -1216,7 +1238,7 @@ export const ChatArea = ({
           {orderedMessages.map((message) => {
             const isAudioMessage =
               message.messageType === "media" &&
-              (message.mediaType === "audio" || message.mediaType === "ptt");
+              (message.mediaType === "audio" || message.mediaType === "ptt" || message.mediaType === "voice");
             const audioSource = isAudioMessage ? audioSources.get(message.id) : undefined;
             const fallbackLabel = `[${message.mediaType === "ptt" ? "ptt" : "audio"}]`;
             const caption = message.caption?.trim() || message.content?.trim() || fallbackLabel;
@@ -1439,6 +1461,18 @@ export const ChatArea = ({
         >
           <UserPlus className="w-5 h-5" />
         </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`text-primary-foreground hover:bg-white/10 ${
+              showContactForm ? 'bg-white/20 text-primary' : ''
+            }`}
+            onClick={handleToggleContactForm}
+            aria-label={showContactForm ? 'Fechar formulário de contato' : 'Abrir formulário de contato'}
+            disabled={isRecording}
+          >
+            <UserPlus className="w-5 h-5" />
+          </Button>
 
         {showContactForm ? (
           <div className="flex flex-1 gap-2">
