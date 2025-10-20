@@ -108,6 +108,7 @@ serve(async (req) => {
           .from('messages')
           .upsert({
             chat_id: chatId,
+            credential_id: credentialId,
             wa_message_id: msg.messageid,
             content: storage.content,
             message_type: storage.messageType,
@@ -121,6 +122,7 @@ serve(async (req) => {
             sender_name: msg.senderName || '',
             status: msg.status || '',
             message_timestamp: msg.messageTimestamp || 0,
+            is_private: Boolean(msg.isPrivate),
           }, {
             onConflict: 'chat_id,wa_message_id'
           });

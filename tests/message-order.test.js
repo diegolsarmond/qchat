@@ -36,6 +36,11 @@ test("normalizeFetchedMessages reverte lista descendente sem mutar original", ()
     { id: "4" },
     { id: "3" },
     { id: "2" },
+test("normalizeFetchedMessages devolve cópia com ordem cronológica", () => {
+  const fetched = [
+    { id: "3" },
+    { id: "2" },
+    { id: "1" },
   ];
 
   const normalized = normalizeFetchedMessages(fetched);
@@ -85,6 +90,7 @@ test("mergeFetchedMessages ignora mensagens duplicadas ao prefixar", () => {
   ];
 
   const fetched = [
+    { id: "3" },
     { id: "2" },
     { id: "1" },
   ];
@@ -95,6 +101,21 @@ test("mergeFetchedMessages ignora mensagens duplicadas ao prefixar", () => {
     JSON.stringify(result.map(message => message.id)),
     JSON.stringify(["1", "2", "3"]),
   );
+});
+
+test("mergeFetchedMessages atualiza campos mutáveis ao refazer fetch", () => {
+  const previous = [
+    { id: "1", status: "sent" },
+  ];
+
+  const fetched = [
+    { id: "1", status: "delivered" },
+  ];
+
+  const result = mergeFetchedMessages(previous, fetched, false);
+
+  strictEqual(result[0].status, "delivered");
+  strictEqual(previous[0].status, "sent");
 });
 
 test("mergeFetchedMessages substitui estado ao resetar", () => {

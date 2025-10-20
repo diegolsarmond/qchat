@@ -86,6 +86,10 @@ serve(async (req) => {
 
     const isMediaMessage = storageMessageType === 'media';
     const finalMediaType = storageMediaType ?? mediaType ?? null;
+    const normalizedFinalMediaType =
+      finalMediaType && finalMediaType.toLowerCase() === 'ptt'
+        ? 'audio'
+        : finalMediaType;
 
     let apiPath = 'text';
     let apiBody: Record<string, unknown> = {
@@ -111,7 +115,7 @@ serve(async (req) => {
       apiPath = 'media';
       apiBody = buildUazMediaApiBody({
         phoneNumber,
-        mediaType: finalMediaType,
+        mediaType: normalizedFinalMediaType,
         mediaUrl: storageMediaUrl,
         mediaBase64: storageMediaBase64,
         caption: storageCaption,
@@ -147,6 +151,7 @@ serve(async (req) => {
       .from('messages')
       .insert({
         chat_id: chatId,
+        credential_id: credentialId,
         wa_message_id: messageData.Id || `msg_${timestamp}`,
         content: storageContent,
         message_type: storageMessageType,
@@ -158,6 +163,7 @@ serve(async (req) => {
         from_me: true,
         status: 'sent',
         message_timestamp: timestamp,
+        is_private: false,
       });
 
     if (insertError) {

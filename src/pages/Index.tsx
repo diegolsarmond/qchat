@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { CredentialSetup } from "@/components/CredentialSetup";
 import { QRCodeScanner } from "@/components/QRCodeScanner";
 import { ChatSidebar } from "@/components/ChatSidebar";
@@ -25,8 +25,8 @@ const MESSAGE_PAGE_SIZE = 50;
 const formatTimestamp = (value: number | string | null | undefined) =>
   new Date(value ?? Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-const mapApiMessage = (m: any): Message => ({
-  id: m.id,
+export const mapApiMessage = (m: any): Message => ({
+  id: m.wa_message_id ?? m.id,
   chatId: m.chat_id,
   content: m.content || "",
   timestamp: formatTimestamp(m.message_timestamp),
@@ -69,7 +69,42 @@ const Index = ({ user }: IndexProps) => {
   );
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const [isPrependingMessages, setIsPrependingMessages] = useState(false);
+  const [credentialProfile, setCredentialProfile] = useState({
+    profileName: null as string | null,
+    phoneNumber: null as string | null,
+  });
   const { toast } = useToast();
+
+  const fetchCredentialProfile = useCallback(
+    async (id: string) => {
+      if (!id) {
+        setCredentialProfile({ profileName: null, phoneNumber: null });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('credentials')
+        .select('profile_name, phone_number')
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching credential profile:', error);
+        setCredentialProfile({ profileName: null, phoneNumber: null });
+        return;
+      }
+
+      setCredentialProfile({
+        profileName: data?.profile_name ?? null,
+        phoneNumber: data?.phone_number ?? null,
+      });
+    },
+    []
+  );
+
+  const clearCredentialProfile = useCallback(() => {
+    setCredentialProfile({ profileName: null, phoneNumber: null });
+  }, []);
 
   const usersById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -78,6 +113,20 @@ const Index = ({ user }: IndexProps) => {
     });
     return map;
   }, [users]);
+
+  useEffect(() => {
+    if (!selectedChat) {
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.innerWidth < 768 && showSidebar) {
+      setShowSidebar(false);
+    }
+  }, [selectedChat, showSidebar]);
 
   const chatsWithAssignedUsers = useMemo(() =>
     chats.map((chat) => {
@@ -138,6 +187,41 @@ const Index = ({ user }: IndexProps) => {
         )
         .subscribe();
 
+      const handleMessageChange = (payload: any) => {
+        console.log('Message change:', payload);
+        const mappedMessage = mapApiMessage(payload.new as any);
+        const previewContent = mappedMessage.messageType === 'text'
+          ? mappedMessage.content
+          : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
+
+        setChats(prevChats => prevChats.map(chat =>
+          chat.id === mappedMessage.chatId
+            ? { ...chat, lastMessage: previewContent, timestamp: mappedMessage.timestamp }
+            : chat
+        ));
+
+        if (selectedChat && payload.new.chat_id === selectedChat.id) {
+          let appended = false;
+          setMessages(prev => {
+            const index = prev.findIndex(message => message.id === mappedMessage.id);
+            if (index === -1) {
+              appended = true;
+              return [...prev, mappedMessage];
+            }
+            const next = [...prev];
+            next[index] = { ...next[index], ...mappedMessage };
+            return next;
+          });
+
+          if (appended) {
+            setMessagePagination(prev => ({
+              ...prev,
+              offset: prev.offset + 1,
+            }));
+          }
+        }
+      };
+
       const messagesChannel = supabase
         .channel('messages-changes')
         .on(
@@ -147,37 +231,16 @@ const Index = ({ user }: IndexProps) => {
             schema: 'public',
             table: 'messages'
           },
-          (payload) => {
-            console.log('New message:', payload);
-            const mappedMessage = mapApiMessage(payload.new as any);
-            const previewContent = mappedMessage.messageType === 'text'
-              ? mappedMessage.content
-              : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
-
-            setChats(prevChats => prevChats.map(chat =>
-              chat.id === mappedMessage.chatId
-                ? { ...chat, lastMessage: previewContent, timestamp: mappedMessage.timestamp }
-                : chat
-            ));
-
-            if (selectedChat && payload.new.chat_id === selectedChat.id) {
-              let appended = false;
-              setMessages(prev => {
-                if (prev.some(message => message.id === mappedMessage.id)) {
-                  return prev;
-                }
-                appended = true;
-                return [...prev, mappedMessage];
-              });
-
-              if (appended) {
-                setMessagePagination(prev => ({
-                  ...prev,
-                  offset: prev.offset + 1,
-                }));
-              }
-            }
-          }
+          handleMessageChange
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages'
+          },
+          handleMessageChange
         )
         .subscribe();
 
@@ -324,15 +387,45 @@ const Index = ({ user }: IndexProps) => {
 
   const handleSetupComplete = (id: string) => {
     setCredentialId(id);
+    clearCredentialProfile();
   };
 
   const handleConnected = () => {
     setIsConnected(true);
+    if (credentialId) {
+      fetchCredentialProfile(credentialId);
+    }
     toast({
       title: "Conectado!",
       description: "WhatsApp conectado com sucesso",
     });
   };
+
+  const handleConnectionStatusChange = useCallback(
+    (status?: string | null) => {
+      if (!credentialId) {
+        clearCredentialProfile();
+        return;
+      }
+
+      if (status === 'connected') {
+        fetchCredentialProfile(credentialId);
+        return;
+      }
+
+      if (status === 'disconnected') {
+        clearCredentialProfile();
+        setIsConnected(false);
+      }
+    },
+    [credentialId, clearCredentialProfile, fetchCredentialProfile]
+  );
+
+  useEffect(() => {
+    if (isConnected && credentialId) {
+      fetchCredentialProfile(credentialId);
+    }
+  }, [isConnected, credentialId, fetchCredentialProfile]);
 
   const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
@@ -418,8 +511,10 @@ const Index = ({ user }: IndexProps) => {
         messageId = data.messageId;
       }
 
+      const waMessageId = messageId || fallbackId();
+
       const newMessage: Message = {
-        id: messageId || fallbackId(),
+        id: waMessageId,
         chatId: selectedChat.id,
         content: messageContent,
         timestamp,
@@ -525,7 +620,13 @@ const Index = ({ user }: IndexProps) => {
   }
 
   if (!isConnected) {
-    return <QRCodeScanner credentialId={credentialId} onConnected={handleConnected} />;
+    return (
+      <QRCodeScanner
+        credentialId={credentialId}
+        onConnected={handleConnected}
+        onStatusChange={handleConnectionStatusChange}
+      />
+    );
   }
 
   // Main WhatsApp interface
@@ -542,6 +643,8 @@ const Index = ({ user }: IndexProps) => {
           activeFilter={chatFilter}
           onFilterChange={setChatFilter}
           currentUserId={user.id}
+          profileName={credentialProfile.profileName}
+          phoneNumber={credentialProfile.phoneNumber}
         />
         <ChatArea
           chat={selectedChat}
@@ -554,6 +657,7 @@ const Index = ({ user }: IndexProps) => {
           isPrependingMessages={isPrependingMessages}
           showSidebar={showSidebar}
           onShowSidebar={() => setShowSidebar(true)}
+          credentialId={credentialId}
         />
       </div>
 
