@@ -64,6 +64,32 @@ const Index = ({ user }: IndexProps) => {
   const [isPrependingMessages, setIsPrependingMessages] = useState(false);
   const { toast } = useToast();
 
+  const usersById = useMemo(() => {
+    const map: Record<string, string> = {};
+    users.forEach((u) => {
+      map[u.id] = u.name;
+    });
+    return map;
+  }, [users]);
+
+  const chatsWithAssignedUsers = useMemo(() =>
+    chats.map((chat) => {
+      const assignedIds = Array.isArray(chat.assignedTo)
+        ? chat.assignedTo
+        : chat.assignedTo
+        ? [chat.assignedTo]
+        : [];
+      const assignedUserNames = assignedIds
+        .map((id) => usersById[id])
+        .filter((name): name is string => Boolean(name));
+
+      return {
+        ...chat,
+        assignedUserNames: assignedUserNames.length > 0 ? assignedUserNames : undefined,
+      };
+    }),
+  [chats, usersById]);
+
   // Fetch users on mount
   useEffect(() => {
     if (!user) return;
@@ -171,13 +197,13 @@ const Index = ({ user }: IndexProps) => {
           id: c.id,
           name: c.name,
           lastMessage: c.last_message || '',
-          timestamp: c.last_message_timestamp 
+          timestamp: c.last_message_timestamp
             ? new Date(c.last_message_timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
             : '',
           unread: c.unread_count || 0,
           avatar: c.avatar || undefined,
           isGroup: c.is_group || false,
-          assignedTo: c.assigned_to || undefined,
+          assignedTo: Array.isArray(c.assigned_to) ? c.assigned_to : c.assigned_to || undefined,
         })));
       }
     } catch (error) {
@@ -382,7 +408,7 @@ const Index = ({ user }: IndexProps) => {
 
       if (error) throw error;
 
-      setChats(chats.map(c => 
+      setChats(chats.map(c =>
         c.id === chatToAssign ? { ...c, assignedTo: userId } : c
       ));
 
@@ -430,7 +456,7 @@ const Index = ({ user }: IndexProps) => {
     <>
       <div className="flex h-screen overflow-hidden flex-col md:flex-row">
         <ChatSidebar
-          chats={chats}
+          chats={chatsWithAssignedUsers}
           selectedChat={selectedChat}
           onSelectChat={handleSelectChat}
           onAssignChat={handleAssignChat}
