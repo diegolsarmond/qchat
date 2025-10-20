@@ -88,10 +88,10 @@ const Index = ({ user }: IndexProps) => {
       return;
     }
 
-    if (window.innerWidth < 768 && showSidebar) {
+    if (window.innerWidth < 768) {
       setShowSidebar(false);
     }
-  }, [selectedChat, showSidebar]);
+  }, [selectedChat]);
 
   const chatsWithAssignedUsers = useMemo(() =>
     chats.map((chat) => {
