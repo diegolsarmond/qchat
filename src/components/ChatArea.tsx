@@ -290,7 +290,7 @@ export const ChatArea = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrivateRef = useRef(isPrivate);
-  const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  const orderedMessages = useMemo(() => [...messages], [messages]);
 
   useEffect(() => {
     onSendMessageRef.current = onSendMessage;
