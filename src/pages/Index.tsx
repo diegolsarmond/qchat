@@ -303,32 +303,59 @@ const Index = ({ user }: IndexProps) => {
   const handleSendMessage = async (payload: SendMessagePayload) => {
     if (!selectedChat || !credentialId) return;
 
+    const messageContent = payload.messageType === 'text'
+      ? payload.content
+      : payload.caption || `[${payload.mediaType || 'mídia'}]`;
+    const timestamp = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const fallbackId = () => {
+      if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+      }
+      return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    };
+
+    let messageId = payload.isPrivate ? fallbackId() : '';
+
     try {
-      const { data, error } = await supabase.functions.invoke('uaz-send-message', {
-        body: {
-          credentialId,
-          chatId: selectedChat.id,
+      if (payload.isPrivate) {
+        await supabase.from('messages').insert({
+          chat_id: selectedChat.id,
+          credential_id: credentialId,
           content: payload.content,
-          messageType: payload.messageType,
-          mediaType: payload.mediaType,
-          mediaUrl: payload.mediaUrl,
-          mediaBase64: payload.mediaBase64,
-          documentName: payload.documentName,
+          message_type: payload.messageType,
+          media_type: payload.mediaType,
+          media_url: payload.mediaUrl,
+          media_base64: payload.mediaBase64,
           caption: payload.caption,
-        }
-      });
+          document_name: payload.documentName,
+          from_me: true,
+          is_private: true,
+          message_timestamp: new Date().toISOString(),
+        });
+      } else {
+        const { data, error } = await supabase.functions.invoke('uaz-send-message', {
+          body: {
+            credentialId,
+            chatId: selectedChat.id,
+            content: payload.content,
+            messageType: payload.messageType,
+            mediaType: payload.mediaType,
+            mediaUrl: payload.mediaUrl,
+            mediaBase64: payload.mediaBase64,
+            documentName: payload.documentName,
+            caption: payload.caption,
+          }
+        });
 
-      if (error) throw error;
-
-      const messageContent = payload.messageType === 'text'
-        ? payload.content
-        : payload.caption || `[${payload.mediaType || 'mídia'}]`;
+        if (error) throw error;
+        messageId = data.messageId;
+      }
 
       const newMessage: Message = {
-        id: data.messageId,
+        id: messageId || fallbackId(),
         chatId: selectedChat.id,
         content: messageContent,
-        timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        timestamp,
         from: 'me',
         status: 'sent',
         messageType: payload.messageType,
@@ -345,7 +372,6 @@ const Index = ({ user }: IndexProps) => {
         offset: prev.offset + 1,
       }));
 
-      // Update chat last message
       setChats(chats.map(c =>
         c.id === selectedChat.id
           ? { ...c, lastMessage: messageContent, timestamp: newMessage.timestamp }
@@ -353,8 +379,8 @@ const Index = ({ user }: IndexProps) => {
       ));
 
       toast({
-        title: "Enviado",
-        description: "Mensagem enviada com sucesso",
+        title: payload.isPrivate ? "Salvo" : "Enviado",
+        description: payload.isPrivate ? "Mensagem privada registrada" : "Mensagem enviada com sucesso",
       });
     } catch (error) {
       console.error('Error sending message:', error);

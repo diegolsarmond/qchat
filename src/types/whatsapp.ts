@@ -43,6 +43,7 @@ export interface SendMessagePayload {
   mediaBase64?: string;
   documentName?: string;
   caption?: string;
+  isPrivate?: boolean;
 }
 
 export interface User {
