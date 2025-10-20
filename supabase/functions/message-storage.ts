@@ -10,7 +10,7 @@ export interface MessageStorageInput {
 
 export interface MessageStorageResult {
   content: string;
-  messageType: 'text' | 'media';
+  messageType: 'text' | 'media' | 'interactive';
   mediaType: string | null;
   caption: string | null;
   documentName: string | null;
@@ -27,11 +27,13 @@ export const resolveMessageStorage = (
   const normalizedContent = input.content ?? '';
   const rawType = input.messageType ?? '';
   const normalizedType = rawType.toLowerCase();
+  const isInteractiveType = normalizedType === 'interactive';
 
   const hasExplicitMediaType =
     normalizedType !== '' &&
     normalizedType !== 'text' &&
-    normalizedType !== 'media';
+    normalizedType !== 'media' &&
+    !isInteractiveType;
 
   const hasMediaPayload =
     normalizedType === 'media' ||
@@ -44,6 +46,18 @@ export const resolveMessageStorage = (
 
   const resolvedMediaType = input.mediaType
     ?? (hasExplicitMediaType ? rawType : null);
+
+  if (isInteractiveType) {
+    return {
+      content: normalizedContent,
+      messageType: 'interactive',
+      mediaType: null,
+      caption: null,
+      documentName: null,
+      mediaUrl: null,
+      mediaBase64: null,
+    };
+  }
 
   if (hasMediaPayload) {
     const fallbackLabel = resolvedMediaType ? `[${resolvedMediaType}]` : '[media]';
