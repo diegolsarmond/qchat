@@ -470,6 +470,24 @@ export const ChatArea = ({
   const orderedMessages = useMemo(() => [...messages], [messages]);
   const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
 
+  const audioSources = useMemo(() => {
+    const map = new Map<string, AudioSource>();
+    orderedMessages.forEach((message) => {
+      if (message.messageType !== "media") {
+        return;
+      }
+      const type = message.mediaType?.toLowerCase();
+      if (type !== "audio" && type !== "ptt" && type !== "voice") {
+        return;
+      }
+      const source = resolveAudioSource(message);
+      if (source) {
+        map.set(message.id, source);
+      }
+    });
+    return map;
+  }, [orderedMessages]);
+
   useEffect(() => {
     onSendMessageRef.current = onSendMessage;
   }, [onSendMessage]);
