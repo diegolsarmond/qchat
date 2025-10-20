@@ -609,14 +609,6 @@ const Index = ({ user }: IndexProps) => {
   const handleSendMessage = async (payload: SendMessagePayload) => {
     if (!selectedChat || !credentialId) return;
 
-    const messageContent = payload.messageType === 'media'
-      ? payload.caption || `[${payload.mediaType || 'mídia'}]`
-      : payload.content;
-    const messageContent = payload.messageType === 'text'
-      ? payload.content
-      : payload.messageType === 'contact'
-      ? payload.contactName || payload.content
-      : payload.caption || `[${payload.mediaType || 'mídia'}]`;
     const now = Date.now();
     const timestamp = new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     let messageContent = '';
@@ -632,7 +624,6 @@ const Index = ({ user }: IndexProps) => {
           : '';
       messageContent = payload.locationName || payload.content || fallbackCoordinates;
     }
-    const timestamp = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const fallbackId = () => {
       if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();

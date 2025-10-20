@@ -33,6 +33,9 @@ const createReactStub = () => {
     useMemo(factory: () => any) {
       return factory();
     },
+    useCallback<T extends (...args: any[]) => any>(callback: T) {
+      return callback;
+    },
   };
 
   react.__render = (Component: any, props: any) => {
@@ -310,4 +313,108 @@ test("mensagens privadas registram apenas no banco", async () => {
   assert.equal(insertCalls[0].content, "Mensagem privada");
   assert.equal(insertCalls[0].is_private, true);
   assert.equal(insertCalls[0].user_id, "user");
+});
+
+test("mensagens de localização privadas usam coordenadas como conteúdo", async () => {
+  const reactStub = createReactStub();
+  const insertCalls: any[] = [];
+
+  const supabaseStub = {
+    functions: {
+      invoke: async () => ({ data: {}, error: null }),
+    },
+    from: (table: string) => {
+      if (table === "messages") {
+        return {
+          insert: async (payload: any) => {
+            insertCalls.push(payload);
+            return { data: null, error: null };
+          },
+        };
+      }
+      if (table === "credentials") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: async () => ({ data: [{ id: "cred-local" }], error: null }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "chats") {
+        return {
+          update: () => ({
+            eq: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "users") {
+        return {
+          select: async () => ({ data: [], error: null }),
+        };
+      }
+      return {
+        select: async () => ({ data: [], error: null }),
+      };
+    },
+    channel: () => ({
+      on() {
+        return this;
+      },
+      subscribe() {
+        return this;
+      },
+    }),
+    removeChannel() {},
+  };
+
+  const chatSidebar = createStubComponent("ChatSidebar");
+  const chatArea = createStubComponent("ChatArea");
+
+  const { module, stubs } = loadIndexPage(reactStub, {
+    chatSidebar,
+    chatArea,
+    supabase: supabaseStub,
+    toast: () => {},
+  });
+
+  const Index = module.default ?? module;
+
+  reactStub.__render(Index, { user: { id: "user" } });
+  await Promise.resolve();
+  await Promise.resolve();
+  reactStub.__render(Index, { user: { id: "user" } });
+
+  stubs.qrCodeScanner.lastProps.onConnected();
+  reactStub.__render(Index, { user: { id: "user" } });
+
+  stubs.chatSidebar.lastProps.onSelectChat({
+    id: "chat-geo",
+    name: "Cliente",
+    lastMessage: "",
+    timestamp: "",
+    unread: 0,
+    isGroup: false,
+  });
+
+  reactStub.__render(Index, { user: { id: "user" } });
+
+  const payload = {
+    content: "",
+    messageType: "location" as const,
+    isPrivate: true,
+    latitude: -15.793889,
+    longitude: -47.882778,
+  };
+
+  stubs.chatArea.lastProps.onSendMessage(payload);
+
+  assert.equal(insertCalls.length, 1);
+  assert.equal(insertCalls[0].content, "-15.793889, -47.882778");
+  assert.equal(insertCalls[0].is_private, true);
+  assert.equal(insertCalls[0].chat_id, "chat-geo");
 });
