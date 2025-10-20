@@ -85,6 +85,7 @@ test("mergeFetchedMessages ignora mensagens duplicadas ao prefixar", () => {
   ];
 
   const fetched = [
+    { id: "3" },
     { id: "2" },
     { id: "1" },
   ];

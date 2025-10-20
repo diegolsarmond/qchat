@@ -466,9 +466,7 @@ export const ChatArea = ({
   const messagesStartRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isPrivateRef = useRef(isPrivate);
   const orderedMessages = useMemo(() => [...messages], [messages]);
-  const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
 
   useEffect(() => {
     onSendMessageRef.current = onSendMessage;
@@ -924,8 +922,8 @@ export const ChatArea = ({
                   {message.from === 'me' && <MessageStatus status={message.status} />}
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
