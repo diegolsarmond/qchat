@@ -28,7 +28,6 @@ export type Database = {
           unread_count: number | null
           updated_at: string
           wa_chat_id: string
-          user_id: string
         }
         Insert: {
           assigned_to?: string | null
@@ -43,7 +42,6 @@ export type Database = {
           unread_count?: number | null
           updated_at?: string
           wa_chat_id: string
-          user_id: string
         }
         Update: {
           assigned_to?: string | null
@@ -58,7 +56,6 @@ export type Database = {
           unread_count?: number | null
           updated_at?: string
           wa_chat_id?: string
-          user_id?: string
         }
         Relationships: [
           {
@@ -73,13 +70,6 @@ export type Database = {
             columns: ["credential_id"]
             isOneToOne: false
             referencedRelation: "credentials"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "chats_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -97,7 +87,6 @@ export type Database = {
           subdomain: string
           token: string
           updated_at: string
-          user_id: string
         }
         Insert: {
           admin_token?: string | null
@@ -111,7 +100,6 @@ export type Database = {
           subdomain: string
           token: string
           updated_at?: string
-          user_id: string
         }
         Update: {
           admin_token?: string | null
@@ -125,17 +113,8 @@ export type Database = {
           subdomain?: string
           token?: string
           updated_at?: string
-          user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "credentials_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       messages: {
         Row: {
@@ -157,7 +136,6 @@ export type Database = {
           media_base64: string | null
           caption: string | null
           is_private: boolean
-          user_id: string
         }
         Insert: {
           chat_id: string
@@ -178,7 +156,6 @@ export type Database = {
           media_base64?: string | null
           caption?: string | null
           is_private?: boolean
-          user_id: string
         }
         Update: {
           chat_id?: string
@@ -199,7 +176,6 @@ export type Database = {
           media_base64?: string | null
           caption?: string | null
           is_private?: boolean
-          user_id?: string
         }
         Relationships: [
           {
@@ -214,13 +190,6 @@ export type Database = {
             columns: ["credential_id"]
             isOneToOne: false
             referencedRelation: "credentials"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "messages_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]

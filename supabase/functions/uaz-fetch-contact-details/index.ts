@@ -35,19 +35,11 @@ serve(async (req) => {
       );
     }
 
-    if (!credential.user_id) {
-      return new Response(
-        JSON.stringify({ error: 'Credential missing owner' }),
-        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Fetch chat to get wa_chat_id
     const { data: chat, error: chatError } = await supabaseClient
       .from('chats')
       .select('wa_chat_id')
       .eq('id', chatId)
-      .eq('user_id', credential.user_id)
       .single();
 
     if (chatError || !chat) {
@@ -96,8 +88,7 @@ serve(async (req) => {
         name: contactDetails.name || contactDetails.wa_name || contactDetails.wa_contactName || phoneNumber,
         avatar: contactDetails.image || null,
       })
-      .eq('id', chatId)
-      .eq('user_id', credential.user_id);
+      .eq('id', chatId);
 
     return new Response(
       JSON.stringify({ 
