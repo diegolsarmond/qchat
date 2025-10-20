@@ -1,4 +1,6 @@
 export const UAZ_MENU_ENDPOINT = 'menu';
+export const UAZ_CONTACT_ENDPOINT = 'contact';
+export const UAZ_LOCATION_API_PATH = 'location';
 
 export interface UazMediaPayloadParams {
   phoneNumber: string;
@@ -15,7 +17,6 @@ export interface UazContactPayloadParams {
   contactPhone: string;
 }
 
-export const UAZ_CONTACT_ENDPOINT = 'contact';
 export interface UazLocationPayloadParams {
   phoneNumber: string;
   latitude: number;
@@ -23,7 +24,31 @@ export interface UazLocationPayloadParams {
   locationName?: string | null;
 }
 
-export const UAZ_LOCATION_API_PATH = 'location';
+export interface UazInteractiveMenuRow {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface UazInteractiveMenuSection {
+  title?: string;
+  rows: UazInteractiveMenuRow[];
+}
+
+export interface UazInteractiveMenuOptions {
+  header?: string;
+  body: string;
+  footer?: string;
+  type: 'buttons' | 'list';
+  button?: string;
+  buttons?: UazInteractiveMenuRow[];
+  sections?: UazInteractiveMenuSection[];
+}
+
+export interface UazInteractivePayloadParams {
+  phoneNumber: string;
+  menu: UazInteractiveMenuOptions;
+}
 
 export const buildUazMediaApiBody = ({
   phoneNumber,
@@ -57,32 +82,6 @@ export const buildUazMediaApiBody = ({
 
   return payload;
 };
-
-export interface UazInteractiveMenuRow {
-  id: string;
-  title: string;
-  description?: string;
-}
-
-export interface UazInteractiveMenuSection {
-  title?: string;
-  rows: UazInteractiveMenuRow[];
-}
-
-export interface UazInteractiveMenuOptions {
-  header?: string;
-  body: string;
-  footer?: string;
-  type: 'buttons' | 'list';
-  button?: string;
-  buttons?: UazInteractiveMenuRow[];
-  sections?: UazInteractiveMenuSection[];
-}
-
-export interface UazInteractivePayloadParams {
-  phoneNumber: string;
-  menu: UazInteractiveMenuOptions;
-}
 
 export const buildUazInteractiveApiBody = ({
   phoneNumber,
@@ -129,6 +128,8 @@ export const buildUazInteractiveApiBody = ({
     number: phoneNumber,
     options,
   };
+};
+
 export const buildUazContactApiBody = ({
   phoneNumber,
   contactName,
@@ -138,6 +139,7 @@ export const buildUazContactApiBody = ({
   name: contactName,
   phone: contactPhone,
 });
+
 export const buildUazLocationApiBody = ({
   phoneNumber,
   latitude,
