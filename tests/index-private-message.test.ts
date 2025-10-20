@@ -8,6 +8,7 @@ import ts from "typescript";
 
 const createReactStub = () => {
   const state: any[] = [];
+  const cleanups: Array<() => void> = [];
   let hookIndex = 0;
 
   const getInitialValue = (value: any) => (typeof value === "function" ? value() : value);
@@ -23,7 +24,12 @@ const createReactStub = () => {
       };
       return [state[index], setState];
     },
-    useEffect() {},
+    useEffect(callback: () => void | (() => void)) {
+      const cleanup = callback();
+      if (typeof cleanup === "function") {
+        cleanups.push(cleanup);
+      }
+    },
     useMemo(factory: () => any) {
       return factory();
     },
@@ -35,6 +41,13 @@ const createReactStub = () => {
   };
 
   react.__getState = () => state;
+
+  react.__runCleanups = () => {
+    while (cleanups.length) {
+      const cleanup = cleanups.pop();
+      cleanup?.();
+    }
+  };
 
   return react;
 };
@@ -75,10 +88,41 @@ const loadIndexPage = (reactStub: any, overrides: any = {}) => {
     functions: {
       invoke: async () => ({ data: {}, error: null }),
     },
-    from: () => ({
-      select: async () => ({ data: [], error: null }),
-      update: () => ({ eq: async () => ({ error: null }) }),
-    }),
+    from: (table: string) => {
+      if (table === "credentials") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: async () => ({ data: [], error: null }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "users") {
+        return {
+          select: async () => ({ data: [], error: null }),
+        };
+      }
+      if (table === "messages") {
+        return {
+          insert: async () => ({ data: null, error: null }),
+        };
+      }
+      if (table === "chats") {
+        return {
+          update: () => ({
+            eq: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          }),
+        };
+      }
+      return {
+        select: async () => ({ data: [], error: null }),
+      };
+    },
     channel: () => ({
       on() {
         return this;
@@ -155,117 +199,115 @@ const loadIndexPage = (reactStub: any, overrides: any = {}) => {
   return { module: module.exports, stubs: { credentialSetup, qrCodeScanner, chatSidebar, chatArea } };
 };
 
-test("mensagens privadas registram apenas no banco", () => {
-  const storage = (() => {
-    const map = new Map<string, string>();
-    return {
-      getItem: (key: string) => (map.has(key) ? map.get(key)! : null),
-      setItem: (key: string, value: string) => {
-        map.set(key, String(value));
+test("mensagens privadas registram apenas no banco", async () => {
+  const reactStub = createReactStub();
+  const insertCalls: any[] = [];
+  const invokeCalls: any[] = [];
+  const credentialQueries: Array<{ column: string; value: string }> = [];
+
+  const supabaseStub = {
+    functions: {
+      invoke: async (...args: any[]) => {
+        invokeCalls.push(args);
+        return { data: { messageId: "remote" }, error: null };
       },
-      removeItem: (key: string) => {
-        map.delete(key);
-      },
-      clear: () => {
-        map.clear();
-      },
-    };
-  })();
-
-  const originalWindow = global.window;
-  const originalLocalStorage = global.localStorage;
-
-  global.window = { localStorage: storage, innerWidth: 1024 } as any;
-  global.localStorage = storage as any;
-
-  storage.setItem("activeCredentialId", "cred-privado");
-
-  try {
-    const reactStub = createReactStub();
-    const insertCalls: any[] = [];
-    const invokeCalls: any[] = [];
-
-    const supabaseStub = {
-      functions: {
-        invoke: async (...args: any[]) => {
-          invokeCalls.push(args);
-          return { data: { messageId: "remote" }, error: null };
-        },
-      },
-      from: (table: string) => {
-        if (table === "messages") {
-          return {
-            insert: async (payload: any) => {
-              insertCalls.push(payload);
-              return { data: null, error: null };
+    },
+    from: (table: string) => {
+      if (table === "messages") {
+        return {
+          insert: async (payload: any) => {
+            insertCalls.push(payload);
+            return { data: null, error: null };
+          },
+        };
+      }
+      if (table === "credentials") {
+        return {
+          select: () => ({
+            eq: (column: string, value: string) => {
+              credentialQueries.push({ column, value });
+              return {
+                order: () => ({
+                  limit: async () => ({ data: [{ id: "cred-privado" }], error: null }),
+                }),
+              };
             },
-          };
-        }
-        if (table === "chats") {
-          return {
-            update: () => ({
+          }),
+        };
+      }
+      if (table === "chats") {
+        return {
+          update: () => ({
+            eq: () => ({
               eq: async () => ({ error: null }),
             }),
-          };
-        }
+          }),
+        };
+      }
+      if (table === "users") {
         return {
           select: async () => ({ data: [], error: null }),
         };
+      }
+      return {
+        select: async () => ({ data: [], error: null }),
+      };
+    },
+    channel: () => ({
+      on() {
+        return this;
       },
-      channel: () => ({
-        on() {
-          return this;
-        },
-        subscribe() {
-          return this;
-        },
-      }),
-      removeChannel() {},
-    };
+      subscribe() {
+        return this;
+      },
+    }),
+    removeChannel() {},
+  };
 
-    const chatSidebar = createStubComponent("ChatSidebar");
-    const chatArea = createStubComponent("ChatArea");
+  const chatSidebar = createStubComponent("ChatSidebar");
+  const chatArea = createStubComponent("ChatArea");
 
-    const { module, stubs } = loadIndexPage(reactStub, {
-      chatSidebar,
-      chatArea,
-      supabase: supabaseStub,
-      toast: () => {},
-    });
+  const { module, stubs } = loadIndexPage(reactStub, {
+    chatSidebar,
+    chatArea,
+    supabase: supabaseStub,
+    toast: () => {},
+  });
 
-    const Index = module.default ?? module;
+  const Index = module.default ?? module;
 
-    const firstRender = reactStub.__render(Index, { user: { id: "user" } });
-    assert.equal(firstRender.type, stubs.qrCodeScanner);
+  reactStub.__render(Index, { user: { id: "user" } });
+  await Promise.resolve();
+  await Promise.resolve();
+  const readyRender = reactStub.__render(Index, { user: { id: "user" } });
+  assert.equal(readyRender.type, stubs.qrCodeScanner);
+  assert.deepEqual(credentialQueries, [{ column: "user_id", value: "user" }]);
 
-    stubs.qrCodeScanner.lastProps.onConnected();
-    reactStub.__render(Index, { user: { id: "user" } });
+  stubs.qrCodeScanner.lastProps.onConnected();
+  reactStub.__render(Index, { user: { id: "user" } });
 
-    stubs.chatSidebar.lastProps.onSelectChat({
-      id: "chat-1",
-      name: "Cliente",
-      lastMessage: "",
-      timestamp: "",
-      unread: 0,
-      isGroup: false,
-    });
+  stubs.chatSidebar.lastProps.onSelectChat({
+    id: "chat-1",
+    name: "Cliente",
+    lastMessage: "",
+    timestamp: "",
+    unread: 0,
+    isGroup: false,
+  });
 
-    reactStub.__render(Index, { user: { id: "user" } });
+  reactStub.__render(Index, { user: { id: "user" } });
 
-    const payload = {
-      content: "Mensagem privada",
-      messageType: "text" as const,
-      isPrivate: true,
-    };
+  const payload = {
+    content: "Mensagem privada",
+    messageType: "text" as const,
+    isPrivate: true,
+  };
 
-    stubs.chatArea.lastProps.onSendMessage(payload);
+  stubs.chatArea.lastProps.onSendMessage(payload);
 
-    assert.equal(invokeCalls.length, 0);
-    assert.equal(insertCalls.length, 1);
-    assert.equal(insertCalls[0].content, "Mensagem privada");
-    assert.equal(insertCalls[0].is_private, true);
-  } finally {
-    global.window = originalWindow;
-    global.localStorage = originalLocalStorage;
-  }
+  assert.equal(invokeCalls.length, 0);
+  assert.equal(insertCalls.length, 1);
+  assert.equal(insertCalls[0].content, "Mensagem privada");
+  assert.equal(insertCalls[0].is_private, true);
+  assert.equal(insertCalls[0].user_id, "user");
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { CredentialSetup } from "@/components/CredentialSetup";
 import { QRCodeScanner } from "@/components/QRCodeScanner";
 import { ChatSidebar } from "@/components/ChatSidebar";
@@ -25,8 +25,8 @@ const MESSAGE_PAGE_SIZE = 50;
 const formatTimestamp = (value: number | string | null | undefined) =>
   new Date(value ?? Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-const mapApiMessage = (m: any): Message => ({
-  id: m.id,
+export const mapApiMessage = (m: any): Message => ({
+  id: m.wa_message_id ?? m.id,
   chatId: m.chat_id,
   content: m.content || "",
   timestamp: formatTimestamp(m.message_timestamp),
@@ -45,15 +45,7 @@ type IndexProps = {
 };
 
 const Index = ({ user }: IndexProps) => {
-  const [credentialId, setCredentialId] = useState<string | null>(() => {
-    if (typeof window !== "undefined") {
-      const stored = window.localStorage?.getItem("activeCredentialId");
-      if (stored) {
-        return stored;
-      }
-    }
-    return null;
-  });
+  const [credentialId, setCredentialId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
@@ -69,7 +61,43 @@ const Index = ({ user }: IndexProps) => {
   );
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const [isPrependingMessages, setIsPrependingMessages] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [credentialProfile, setCredentialProfile] = useState({
+    profileName: null as string | null,
+    phoneNumber: null as string | null,
+  });
   const { toast } = useToast();
+
+  const fetchCredentialProfile = useCallback(
+    async (id: string) => {
+      if (!id) {
+        setCredentialProfile({ profileName: null, phoneNumber: null });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('credentials')
+        .select('profile_name, phone_number')
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching credential profile:', error);
+        setCredentialProfile({ profileName: null, phoneNumber: null });
+        return;
+      }
+
+      setCredentialProfile({
+        profileName: data?.profile_name ?? null,
+        phoneNumber: data?.phone_number ?? null,
+      });
+    },
+    []
+  );
+
+  const clearCredentialProfile = useCallback(() => {
+    setCredentialProfile({ profileName: null, phoneNumber: null });
+  }, []);
 
   const usersById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -78,6 +106,58 @@ const Index = ({ user }: IndexProps) => {
     });
     return map;
   }, [users]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!user?.id || credentialId) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const fetchCredential = async () => {
+      const { data, error } = await supabase
+        .from('credentials')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error('Error fetching credentials:', error);
+        toast({
+          title: "Erro",
+          description: "Falha ao carregar credenciais",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (active) {
+        const existing = data && data.length > 0 ? data[0].id : null;
+        setCredentialId(existing);
+      }
+    };
+
+    fetchCredential();
+
+    return () => {
+      active = false;
+    };
+  }, [user, credentialId, toast]);
+    if (!selectedChat) {
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.innerWidth < 768) {
+      setShowSidebar(false);
+    }
+  }, [selectedChat]);
 
   const chatsWithAssignedUsers = useMemo(() =>
     chats.map((chat) => {
@@ -129,7 +209,7 @@ const Index = ({ user }: IndexProps) => {
             event: '*',
             schema: 'public',
             table: 'chats',
-            filter: `credential_id=eq.${credentialId}`
+            filter: `credential_id=eq.${credentialId},user_id=eq.${user.id}`
           },
           (payload) => {
             console.log('Chat change:', payload);
@@ -213,7 +293,8 @@ const Index = ({ user }: IndexProps) => {
           {
             event: 'INSERT',
             schema: 'public',
-            table: 'messages'
+            table: 'messages',
+            filter: `credential_id=eq.${credentialId},user_id=eq.${user.id}`
           },
           handleMessageChange
         )
@@ -224,6 +305,37 @@ const Index = ({ user }: IndexProps) => {
             schema: 'public',
             table: 'messages'
           },
+          (payload) => {
+            console.log('New message:', payload);
+            const mappedMessage = mapApiMessage(payload.new as any);
+            const previewContent = mappedMessage.messageType === 'media'
+              ? mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`
+              : mappedMessage.content;
+
+            setChats(prevChats => prevChats.map(chat =>
+              chat.id === mappedMessage.chatId
+                ? { ...chat, lastMessage: previewContent, timestamp: mappedMessage.timestamp }
+                : chat
+            ));
+
+            if (selectedChat && payload.new.chat_id === selectedChat.id) {
+              let appended = false;
+              setMessages(prev => {
+                if (prev.some(message => message.id === mappedMessage.id)) {
+                  return prev;
+                }
+                appended = true;
+                return [...prev, mappedMessage];
+              });
+
+              if (appended) {
+                setMessagePagination(prev => ({
+                  ...prev,
+                  offset: prev.offset + 1,
+                }));
+              }
+            }
+          }
           handleMessageChange
         )
         .subscribe();
@@ -271,7 +383,7 @@ const Index = ({ user }: IndexProps) => {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('uaz-fetch-chats', {
-        body: { credentialId }
+        body: { credentialId, userId: user.id }
       });
 
       if (error) throw error;
@@ -329,7 +441,8 @@ const Index = ({ user }: IndexProps) => {
           chatId,
           limit: MESSAGE_PAGE_SIZE,
           offset: options.reset ? 0 : messagePagination.offset,
-          order: 'asc',
+          order: 'desc',
+          userId: user.id,
         }
       });
 
@@ -376,15 +489,91 @@ const Index = ({ user }: IndexProps) => {
 
   const handleSetupComplete = (id: string) => {
     setCredentialId(id);
+    clearCredentialProfile();
   };
 
   const handleConnected = () => {
     setIsConnected(true);
+    if (credentialId) {
+      fetchCredentialProfile(credentialId);
+    }
     toast({
       title: "Conectado!",
       description: "WhatsApp conectado com sucesso",
     });
   };
+
+  const handleDisconnect = async () => {
+    if (!credentialId || isDisconnecting) {
+      return;
+    }
+
+    setIsDisconnecting(true);
+
+    try {
+      const { error } = await supabase.functions.invoke('uaz-disconnect-instance', {
+        body: { credentialId },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setIsConnected(false);
+      setSelectedChat(null);
+      setChats([]);
+      setMessages([]);
+      setAssignDialogOpen(false);
+      setChatToAssign(null);
+      setMessagePagination(createInitialMessagePagination(MESSAGE_PAGE_SIZE));
+      setShowSidebar(true);
+      setIsLoadingMoreMessages(false);
+      setIsPrependingMessages(false);
+
+      if (typeof window !== 'undefined') {
+        window.localStorage?.removeItem("activeCredentialId");
+      }
+
+      toast({
+        title: "Desconectado",
+        description: "WhatsApp desconectado com sucesso",
+      });
+    } catch (error) {
+      console.error('Error disconnecting instance:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao desconectar",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDisconnecting(false);
+    }
+  };
+  const handleConnectionStatusChange = useCallback(
+    (status?: string | null) => {
+      if (!credentialId) {
+        clearCredentialProfile();
+        return;
+      }
+
+      if (status === 'connected') {
+        fetchCredentialProfile(credentialId);
+        return;
+      }
+
+      if (status === 'disconnected') {
+        clearCredentialProfile();
+        setIsConnected(false);
+      }
+    },
+    [credentialId, clearCredentialProfile, fetchCredentialProfile]
+  );
+
+  useEffect(() => {
+    if (isConnected && credentialId) {
+      fetchCredentialProfile(credentialId);
+    }
+  }, [isConnected, credentialId, fetchCredentialProfile]);
 
   const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
@@ -399,7 +588,7 @@ const Index = ({ user }: IndexProps) => {
     if (credentialId) {
       try {
         const { data } = await supabase.functions.invoke('uaz-fetch-contact-details', {
-          body: { credentialId, chatId: chat.id }
+          body: { credentialId, chatId: chat.id, userId: user.id }
         });
         
         if (data) {
@@ -419,11 +608,30 @@ const Index = ({ user }: IndexProps) => {
   const handleSendMessage = async (payload: SendMessagePayload) => {
     if (!selectedChat || !credentialId) return;
 
+    const messageContent = payload.messageType === 'media'
+      ? payload.caption || `[${payload.mediaType || 'mídia'}]`
+      : payload.content;
     const messageContent = payload.messageType === 'text'
       ? payload.content
+      : payload.messageType === 'contact'
+      ? payload.contactName || payload.content
       : payload.caption || `[${payload.mediaType || 'mídia'}]`;
     const now = Date.now();
     const timestamp = new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    let messageContent = '';
+
+    if (payload.messageType === 'text') {
+      messageContent = payload.content;
+    } else if (payload.messageType === 'media') {
+      messageContent = payload.caption || `[${payload.mediaType || 'mídia'}]`;
+    } else {
+      const fallbackCoordinates =
+        typeof payload.latitude === 'number' && typeof payload.longitude === 'number'
+          ? `${payload.latitude}, ${payload.longitude}`
+          : '';
+      messageContent = payload.locationName || payload.content || fallbackCoordinates;
+    }
+    const timestamp = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const fallbackId = () => {
       if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
@@ -439,7 +647,7 @@ const Index = ({ user }: IndexProps) => {
           id: messageId,
           chat_id: selectedChat.id,
           credential_id: credentialId,
-          content: payload.content,
+          content: messageContent,
           message_type: payload.messageType,
           media_type: payload.mediaType,
           media_url: payload.mediaUrl,
@@ -449,6 +657,7 @@ const Index = ({ user }: IndexProps) => {
           from_me: true,
           is_private: true,
           message_timestamp: new Date().toISOString(),
+          user_id: user.id,
         });
 
         if (error) throw error;
@@ -464,6 +673,13 @@ const Index = ({ user }: IndexProps) => {
             mediaBase64: payload.mediaBase64,
             documentName: payload.documentName,
             caption: payload.caption,
+            interactive: payload.interactive,
+            contactName: payload.contactName,
+            contactPhone: payload.contactPhone,
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+            locationName: payload.locationName,
+            userId: user.id,
           }
         });
 
@@ -471,8 +687,10 @@ const Index = ({ user }: IndexProps) => {
         messageId = data.messageId;
       }
 
+      const waMessageId = messageId || fallbackId();
+
       const newMessage: Message = {
-        id: messageId || fallbackId(),
+        id: waMessageId,
         chatId: selectedChat.id,
         content: messageContent,
         timestamp,
@@ -484,6 +702,11 @@ const Index = ({ user }: IndexProps) => {
         documentName: payload.documentName,
         mediaUrl: payload.mediaUrl,
         mediaBase64: payload.mediaBase64,
+        contactName: payload.contactName,
+        contactPhone: payload.contactPhone,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        locationName: payload.locationName,
       };
 
       setMessages(prev => [...prev, newMessage]);
@@ -524,7 +747,8 @@ const Index = ({ user }: IndexProps) => {
       const { error } = await supabase
         .from('chats')
         .update({ assigned_to: userId })
-        .eq('id', chatToAssign);
+        .eq('id', chatToAssign)
+        .eq('user_id', user.id);
 
       if (error) throw error;
 
@@ -578,7 +802,13 @@ const Index = ({ user }: IndexProps) => {
   }
 
   if (!isConnected) {
-    return <QRCodeScanner credentialId={credentialId} onConnected={handleConnected} />;
+    return (
+      <QRCodeScanner
+        credentialId={credentialId}
+        onConnected={handleConnected}
+        onStatusChange={handleConnectionStatusChange}
+      />
+    );
   }
 
   // Main WhatsApp interface
@@ -595,6 +825,10 @@ const Index = ({ user }: IndexProps) => {
           activeFilter={chatFilter}
           onFilterChange={setChatFilter}
           currentUserId={user.id}
+          onDisconnect={handleDisconnect}
+          isDisconnecting={isDisconnecting}
+          profileName={credentialProfile.profileName}
+          phoneNumber={credentialProfile.phoneNumber}
         />
         <ChatArea
           chat={selectedChat}
@@ -607,6 +841,7 @@ const Index = ({ user }: IndexProps) => {
           isPrependingMessages={isPrependingMessages}
           showSidebar={showSidebar}
           onShowSidebar={() => setShowSidebar(true)}
+          credentialId={credentialId}
         />
       </div>
 

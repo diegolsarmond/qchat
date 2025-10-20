@@ -7,10 +7,11 @@ import { useToast } from "@/hooks/use-toast";
 interface QRCodeScannerProps {
   credentialId: string;
   onConnected: () => void;
+  onStatusChange?: (status?: string | null) => void;
 }
 
 
-export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps) => {
+export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRCodeScannerProps) => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string>("Conectando ao WhatsApp...");
@@ -36,6 +37,11 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
       if (error) throw error;
 
       console.log('Status da instância:', data);
+
+      const statusValue = data?.connected ? 'connected' : data?.status;
+      if (statusValue) {
+        onStatusChange?.(statusValue);
+      }
 
       // Se já está conectado, redireciona imediatamente
       if (data.connected || data.status === 'connected') {
@@ -81,6 +87,7 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
         description: "Falha ao verificar status da conexão",
         variant: "destructive",
       });
+      onStatusChange?.('error');
     }
     finally {
       isFetchingRef.current = false;
