@@ -347,20 +347,42 @@ export const ChatArea = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrivateRef = useRef(isPrivate);
   const orderedMessages = useMemo(() => [...messages], [messages]);
+  const audioSourcesRef = useRef<Map<string, AudioSource>>(new Map());
   const audioSources = useMemo(() => {
-    const map = new Map<string, AudioSource>();
+    const previousSources = audioSourcesRef.current;
+    const nextSources = new Map<string, AudioSource>();
+    const activeIds = new Set<string>();
+
     orderedMessages.forEach((message) => {
       if (
         message.messageType === "media" &&
         (message.mediaType === "audio" || message.mediaType === "ptt")
       ) {
-        const source = resolveAudioSource(message);
+        let source = previousSources.get(message.id);
+        if (!source) {
+          const resolvedSource = resolveAudioSource(message);
+          if (resolvedSource) {
+            source = resolvedSource;
+          }
+        }
+
         if (source) {
-          map.set(message.id, source);
+          nextSources.set(message.id, source);
+          activeIds.add(message.id);
         }
       }
     });
-    return map;
+
+    previousSources.forEach((source, id) => {
+      if (!activeIds.has(id) && source.shouldRevoke) {
+        if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+          URL.revokeObjectURL(source.url);
+        }
+      }
+    });
+
+    audioSourcesRef.current = nextSources;
+    return nextSources;
   }, [orderedMessages]);
 
   useEffect(() => {
@@ -372,21 +394,18 @@ export const ChatArea = ({
   }, [isPrivate]);
 
   useEffect(() => {
-    const urls: string[] = [];
-    audioSources.forEach((source) => {
-      if (source.shouldRevoke) {
-        urls.push(source.url);
-      }
-    });
     return () => {
       if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
         return;
       }
-      urls.forEach((url) => {
-        URL.revokeObjectURL(url);
+
+      audioSourcesRef.current.forEach((source) => {
+        if (source.shouldRevoke) {
+          URL.revokeObjectURL(source.url);
+        }
       });
     };
-  }, [audioSources]);
+  }, []);
 
   if (!recorderRef.current) {
     recorderRef.current = createAudioRecorder({
