@@ -270,6 +270,23 @@ const inferAudioMimeType = (message: Message) => {
 type AudioSource = { url: string; shouldRevoke: boolean };
 type CachedAudioSource = { source: AudioSource; signature: string };
 
+type CachedAudioSource = {
+  source: AudioSource;
+  signature: string | null;
+};
+
+const getAudioSignature = (message: Message): string | null => {
+  if (message.mediaUrl) {
+    return `url:${message.mediaUrl}`;
+  }
+
+  if (message.mediaBase64) {
+    return `base64:${message.mediaBase64}`;
+  }
+
+  return null;
+};
+
 const resolveAudioSource = (message: Message): AudioSource | null => {
   if (message.mediaUrl) {
     return { url: message.mediaUrl, shouldRevoke: false };
@@ -508,7 +525,8 @@ export const ChatArea = ({
   const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
   const audioSources = useMemo(() => {
     const previousSources = audioSourcesRef.current;
-    const nextSources = new Map<string, AudioSource>();
+    const nextSources = new Map<string, CachedAudioSource>();
+    const exposedSources = new Map<string, AudioSource>();
     const activeIds = new Set<string>();
 
     orderedMessages.forEach((message) => {
@@ -516,16 +534,31 @@ export const ChatArea = ({
         message.messageType !== "media" ||
         (message.mediaType !== "audio" && message.mediaType !== "ptt" && message.mediaType !== "voice")
       ) {
-        let source = previousSources.get(message.id);
-        if (!source) {
+        const signature = getAudioSignature(message);
+        let cachedSource = previousSources.get(message.id);
+
+        if (cachedSource && cachedSource.signature !== signature) {
+          if (cachedSource.source.shouldRevoke) {
+            if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+              URL.revokeObjectURL(cachedSource.source.url);
+            }
+          }
+          cachedSource = undefined;
+        }
+
+        if (!cachedSource) {
           const resolvedSource = resolveAudioSource(message);
           if (resolvedSource) {
-            source = resolvedSource;
+            cachedSource = {
+              source: resolvedSource,
+              signature,
+            };
           }
         }
 
-        if (source) {
-          nextSources.set(message.id, source);
+        if (cachedSource) {
+          nextSources.set(message.id, cachedSource);
+          exposedSources.set(message.id, cachedSource.source);
           activeIds.add(message.id);
         }
         return;
@@ -549,25 +582,10 @@ export const ChatArea = ({
       }
     });
 
-    remainingPreviousIds.forEach((id) => {
-      const cached = previousCache.get(id);
-      if (cached?.source.shouldRevoke) {
-        urlsToRevoke.push(cached.source.url);
-      }
-    });
-
-    audioSourceCacheRef.current = nextCache;
-
-    return {
-      audioSources: new Map(
-        Array.from(nextCache.entries(), ([id, { source }]) => [id, source]),
-      ),
-      urlsToRevoke,
-    };
-    previousSources.forEach((source, id) => {
-      if (!activeIds.has(id) && source.shouldRevoke) {
+    previousSources.forEach((cachedSource, id) => {
+      if (!activeIds.has(id) && cachedSource.source.shouldRevoke) {
         if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
-          URL.revokeObjectURL(source.url);
+          URL.revokeObjectURL(cachedSource.source.url);
         }
         return;
       }
@@ -597,7 +615,7 @@ export const ChatArea = ({
     });
 
     audioSourcesRef.current = nextSources;
-    return nextSources;
+    return exposedSources;
   }, [orderedMessages]);
 
   useEffect(() => {
@@ -624,9 +642,9 @@ export const ChatArea = ({
       }
       audioSourceCacheRef.current.forEach(({ source }) => {
 
-      audioSourcesRef.current.forEach((source) => {
-        if (source.shouldRevoke) {
-          URL.revokeObjectURL(source.url);
+      audioSourcesRef.current.forEach((cachedSource) => {
+        if (cachedSource.source.shouldRevoke) {
+          URL.revokeObjectURL(cachedSource.source.url);
         }
       });
     };
