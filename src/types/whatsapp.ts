@@ -18,6 +18,7 @@ export interface Chat {
   name: string;
   lastMessage: string;
   timestamp: string;
+  lastMessageAt?: number | null;
   unread: number;
   avatar?: string;
   isGroup: boolean;
