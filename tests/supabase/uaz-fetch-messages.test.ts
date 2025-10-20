@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { upsertFetchedMessages } from '../../supabase/functions/uaz-fetch-messages/upsert-messages.ts';
 import { resolveMessageStorage } from '../../supabase/functions/message-storage.ts';
 
-test('upsertFetchedMessages agrega mensagens em única chamada e aplica resolveMessageStorage', async () => {
+test('upsertFetchedMessages aplica resolveMessageStorage e upserta mensagens individualmente', async () => {
   const messages = [
     {
       messageid: 'msg-1',
@@ -55,13 +55,13 @@ test('upsertFetchedMessages agrega mensagens em única chamada e aplica resolveM
     userId: 'user-1',
   });
 
-  assert.equal(upsertCalls.length, 1);
+  assert.equal(upsertCalls.length, messages.length);
 
-  const [{ records, options }] = upsertCalls;
-  assert.equal(records.length, messages.length);
-  assert.deepEqual(options, { onConflict: 'chat_id,wa_message_id' });
+  upsertCalls.forEach(({ records, options }, index) => {
+    assert.equal(records.length, 1);
+    assert.deepEqual(options, { onConflict: 'chat_id,wa_message_id' });
 
-  records.forEach((record, index) => {
+    const [record] = records;
     const original = messages[index];
     const storage = resolveMessageStorage({
       content: original.text || '',
@@ -93,4 +93,48 @@ test('upsertFetchedMessages agrega mensagens em única chamada e aplica resolveM
       is_private: Boolean(original.isPrivate),
     });
   });
+});
+
+test('upsertFetchedMessages ignora mensagens inválidas mantendo demais upserts', async () => {
+  const messages = [
+    {
+      messageType: 'text',
+      text: 'mensagem sem id',
+    },
+    {
+      messageid: 'msg-1',
+      text: 'válida',
+    },
+  ];
+
+  const upsertCalls: Array<{
+    records: Array<Record<string, unknown>>;
+    options: { onConflict: string };
+  }> = [];
+
+  const supabaseClient = {
+    from(table: string) {
+      assert.equal(table, 'messages');
+      return {
+        upsert(records: Array<Record<string, unknown>>, options: { onConflict: string }) {
+          upsertCalls.push({ records, options });
+          return Promise.resolve({ data: null, error: null });
+        },
+      };
+    },
+  };
+
+  await upsertFetchedMessages({
+    supabaseClient,
+    messages,
+    chatId: 'chat-1',
+    credentialId: 'cred-1',
+    userId: 'user-1',
+  });
+
+  assert.equal(upsertCalls.length, 1);
+  const [{ records, options }] = upsertCalls;
+  assert.equal(records.length, 1);
+  assert.deepEqual(options, { onConflict: 'chat_id,wa_message_id' });
+  assert.equal(records[0].wa_message_id, 'msg-1');
 });
