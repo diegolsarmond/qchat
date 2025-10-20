@@ -1,7 +1,7 @@
 import type { Message } from "@/types/whatsapp";
 
 export const normalizeFetchedMessages = (messages: Message[]): Message[] => {
-  return [...messages];
+  return [...messages].reverse();
 };
 
 export const mergeFetchedMessages = (
