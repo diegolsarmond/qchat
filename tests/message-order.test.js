@@ -36,11 +36,6 @@ test("normalizeFetchedMessages reverte lista descendente sem mutar original", ()
     { id: "4" },
     { id: "3" },
     { id: "2" },
-test("normalizeFetchedMessages devolve cópia com ordem cronológica", () => {
-  const fetched = [
-    { id: "3" },
-    { id: "2" },
-    { id: "1" },
   ];
 
   const normalized = normalizeFetchedMessages(fetched);
@@ -52,6 +47,26 @@ test("normalizeFetchedMessages devolve cópia com ordem cronológica", () => {
   strictEqual(
     JSON.stringify(fetched.map(message => message.id)),
     JSON.stringify(["4", "3", "2"]),
+  );
+  notStrictEqual(normalized, fetched);
+});
+
+test("normalizeFetchedMessages devolve cópia com ordem cronológica", () => {
+  const fetched = [
+    { id: "3" },
+    { id: "2" },
+    { id: "1" },
+  ];
+
+  const normalized = normalizeFetchedMessages(fetched);
+
+  strictEqual(
+    JSON.stringify(normalized.map(message => message.id)),
+    JSON.stringify(["1", "2", "3"]),
+  );
+  strictEqual(
+    JSON.stringify(fetched.map(message => message.id)),
+    JSON.stringify(["3", "2", "1"]),
   );
   notStrictEqual(normalized, fetched);
 });

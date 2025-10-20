@@ -215,3 +215,50 @@ test("renderiza áudio quando mediaUrl está presente", () => {
   assert.ok(html.includes("src=\"https://example.com/audio.ogg\""));
   assert.ok(html.includes("Baixar media"));
 });
+
+test("renderiza mensagem de voz com áudio reproduzível", () => {
+  const chat: Chat = {
+    id: "chat-voice",
+    name: "Cliente",
+    lastMessage: "",
+    timestamp: "10:05",
+    unread: 0,
+    isGroup: false,
+    attendanceStatus: "waiting",
+  };
+
+  const voiceBase64 = Buffer.from([5, 6, 7, 8]).toString("base64");
+
+  const messages: Message[] = [
+    {
+      id: "mensagem-voice",
+      chatId: "chat-voice",
+      content: "",
+      timestamp: "10:06",
+      from: "them",
+      messageType: "media",
+      mediaType: "voice",
+      mediaBase64: voiceBase64,
+      documentName: "voz.opus",
+    },
+  ];
+
+  const html = renderToStaticMarkup(
+    <ChatArea
+      chat={chat}
+      messages={messages}
+      onSendMessage={() => {}}
+      onAssignChat={() => {}}
+      onLoadMoreMessages={() => {}}
+      hasMoreMessages={false}
+      isLoadingMoreMessages={false}
+      isPrependingMessages={false}
+      showSidebar
+      onShowSidebar={() => {}}
+    />,
+  );
+
+  assert.ok(html.includes("<audio controls"));
+  assert.ok(html.includes("download=\"voz.opus\""));
+  assert.ok(html.includes("Baixar voz.opus"));
+});
