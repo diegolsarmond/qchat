@@ -222,3 +222,26 @@ test("Index mantém a conversa visível no mobile após restaurar seleção", ()
     global.localStorage = originalLocalStorage;
   }
 });
+
+test("Index mantém a barra lateral quando executado sem window", () => {
+  const globalWithWindow = global as typeof globalThis & { window?: unknown };
+  const originalWindow = globalWithWindow.window;
+
+  delete globalWithWindow.window;
+
+  try {
+    const reactStub = createReactStub();
+    const chatSidebar = createStubComponent("ChatSidebar");
+    const chatArea = createStubComponent("ChatArea");
+
+    const { module } = loadIndexPage(reactStub, { chatSidebar, chatArea });
+    const Index = module.default ?? (module as unknown as (props: unknown) => unknown);
+
+    reactStub.__render(Index, { user: { id: "user-1" } });
+
+    const state = reactStub.__getState();
+    assert.equal(state[9], true);
+  } finally {
+    globalWithWindow.window = originalWindow;
+  }
+});
