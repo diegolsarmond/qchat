@@ -867,6 +867,7 @@ export const ChatArea = ({
       messageType: 'contact',
       contactName: name,
       contactPhone: phone,
+      ...(isPrivate ? { isPrivate: true } : {}),
     });
 
     setContactName("");
