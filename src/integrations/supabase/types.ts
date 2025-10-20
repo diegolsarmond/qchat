@@ -87,6 +87,7 @@ export type Database = {
           subdomain: string
           token: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           admin_token?: string | null
@@ -100,6 +101,7 @@ export type Database = {
           subdomain: string
           token: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           admin_token?: string | null
@@ -113,6 +115,7 @@ export type Database = {
           subdomain?: string
           token?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
