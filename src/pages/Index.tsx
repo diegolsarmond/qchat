@@ -277,7 +277,7 @@ const Index = ({ user }: IndexProps) => {
           chatId,
           limit: MESSAGE_PAGE_SIZE,
           offset: options.reset ? 0 : messagePagination.offset,
-          order: 'asc',
+          order: 'desc',
         }
       });
 
