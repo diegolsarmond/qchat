@@ -13,6 +13,11 @@ serve(async (req) => {
   }
 
   try {
+    const authorization = req.headers.get('Authorization');
+
+    if (!authorization) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
     const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization');
     const accessToken = typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
       ? authHeader.slice(7).trim()
@@ -25,6 +30,35 @@ serve(async (req) => {
       );
     }
 
+    const supabaseAuthClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: { headers: { Authorization: authorization } },
+        auth: { autoRefreshToken: false, persistSession: false },
+      }
+    );
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseAuthClient.auth.getUser();
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { credentialId, limit = 50, offset = 0 } = await req.json();
+    
+    console.log('[UAZ Fetch Chats] Fetching chats for credential:', credentialId);
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { autoRefreshToken: false, persistSession: false } }
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
@@ -70,6 +104,12 @@ serve(async (req) => {
       return ownership.response;
     }
 
+    if (credential.user_id !== user.id) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     const ownedCredential = ownership.credential;
 
     console.log('[UAZ Fetch Chats] Fetching from UAZ API');

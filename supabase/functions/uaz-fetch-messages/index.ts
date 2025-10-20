@@ -14,6 +14,11 @@ serve(async (req) => {
   }
 
   try {
+    const authorization = req.headers.get('Authorization');
+
+    if (!authorization) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
     const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization');
     const accessToken = typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
       ? authHeader.slice(7).trim()
@@ -26,6 +31,23 @@ serve(async (req) => {
       );
     }
 
+    const supabaseAuthClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: { headers: { Authorization: authorization } },
+        auth: { autoRefreshToken: false, persistSession: false },
+      }
+    );
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseAuthClient.auth.getUser();
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
@@ -61,6 +83,11 @@ serve(async (req) => {
     const safeLimit = Math.max(1, Number(limit) || 50);
     const safeOffset = Math.max(0, Number(offset) || 0);
 
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
     console.log('[UAZ Fetch Messages] Fetching messages for chat:', chatId);
 
     // Fetch credential
@@ -80,6 +107,12 @@ serve(async (req) => {
       return ownership.response;
     }
 
+    if (credential.user_id !== user.id) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     const ownedCredential = ownership.credential;
 
     // Fetch chat
