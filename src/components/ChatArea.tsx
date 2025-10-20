@@ -510,14 +510,14 @@ export const ChatArea = ({
     const urlsToRevoke: string[] = [];
     const remainingPreviousIds = new Set(previousCache.keys());
 
-    orderedMessages.forEach((message) => {
+    for (const message of orderedMessages) {
       remainingPreviousIds.delete(message.id);
       const isAudioMessage =
         message.messageType === "media" &&
         (message.mediaType === "audio" || message.mediaType === "ptt" || message.mediaType === "voice");
 
       if (!isAudioMessage) {
-        return;
+        continue;
       }
 
       const signature = getAudioSignature(message);
@@ -526,7 +526,7 @@ export const ChatArea = ({
       if (cached && cached.signature === signature) {
         nextCache.set(message.id, cached);
         exposedSources.set(message.id, cached.source);
-        return;
+        continue;
       }
 
       if (cached?.source.shouldRevoke) {
@@ -542,14 +542,14 @@ export const ChatArea = ({
         nextCache.set(message.id, cachedSource);
         exposedSources.set(message.id, resolvedSource);
       }
-    });
+    }
 
-    remainingPreviousIds.forEach((id) => {
+    for (const id of remainingPreviousIds) {
       const cached = previousCache.get(id);
       if (cached?.source.shouldRevoke) {
         urlsToRevoke.push(cached.source.url);
       }
-    });
+    }
 
     audioSourceCacheRef.current = nextCache;
 
