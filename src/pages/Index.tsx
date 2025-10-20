@@ -489,6 +489,7 @@ const Index = ({ user }: IndexProps) => {
           from_me: true,
           is_private: true,
           message_timestamp: new Date().toISOString(),
+          user_id: user.id,
         });
 
         if (error) throw error;

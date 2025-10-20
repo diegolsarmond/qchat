@@ -34,6 +34,12 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
     setLoading(true);
 
     try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !userData?.user) {
+        throw new Error("Usuário não autenticado");
+      }
+
       // Insert credential into database
       const { data, error } = await supabase
         .from('credentials')
@@ -43,6 +49,7 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
           token: token,
           admin_token: adminToken || null,
           status: 'disconnected',
+          user_id: userData.user.id,
         })
         .select()
         .single();
