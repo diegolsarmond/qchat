@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveMessageStorage } from "../message-storage.ts";
+import {
+  buildUazMediaApiBody,
+  buildUazInteractiveApiBody,
+  UAZ_MENU_ENDPOINT,
 import { buildUazMediaApiBody, buildUazContactApiBody, UAZ_CONTACT_ENDPOINT } from "./payload-helper.ts";
 import {
   buildUazMediaApiBody,
@@ -29,13 +33,14 @@ serve(async (req) => {
       mediaBase64,
       documentName,
       caption,
+      interactive,
       contactName,
       contactPhone,
       latitude,
       longitude,
       locationName,
     } = await req.json();
-    
+
     console.log('[UAZ Send Message] Sending to chat:', chatId);
 
     const supabaseClient = createClient(
@@ -76,6 +81,15 @@ serve(async (req) => {
 
     console.log('[UAZ Send Message] Sending to number:', phoneNumber);
 
+    const normalizedMessageType = typeof messageType === 'string' ? messageType : 'text';
+
+    let storageContent = typeof content === 'string' ? content : '';
+    let storageMessageType: 'text' | 'media' | 'interactive' = 'text';
+    let storageMediaType: string | null = null;
+    let storageCaption: string | null = null;
+    let storageDocumentName: string | null = null;
+    let storageMediaUrl: string | null = null;
+    let storageMediaBase64: string | null = null;
     let apiPath = 'text';
     let apiBody: Record<string, unknown>;
     let storageContent = '';
@@ -143,6 +157,11 @@ serve(async (req) => {
       text: storageContent,
     };
 
+    if (normalizedMessageType === 'interactive') {
+      const rawType = typeof interactive?.type === 'string' ? interactive.type.toLowerCase() : '';
+      if (rawType !== 'buttons' && rawType !== 'list') {
+        return new Response(
+          JSON.stringify({ error: 'Tipo de menu inválido' }),
     if (isLocationMessage) {
       if (typeof latitude !== 'number' || typeof longitude !== 'number') {
         return new Response(
@@ -151,6 +170,10 @@ serve(async (req) => {
         );
       }
 
+      const bodyText = typeof interactive?.body === 'string' ? interactive.body.trim() : '';
+      if (!bodyText) {
+        return new Response(
+          JSON.stringify({ error: 'Corpo do menu é obrigatório' }),
       apiPath = UAZ_LOCATION_API_PATH;
       apiBody = buildUazLocationApiBody({
         phoneNumber,
@@ -166,6 +189,124 @@ serve(async (req) => {
         );
       }
 
+      const headerText = typeof interactive?.header === 'string' ? interactive.header.trim() : '';
+      const footerText = typeof interactive?.footer === 'string' ? interactive.footer.trim() : '';
+
+      const sanitized: {
+        type: 'buttons' | 'list';
+        body: string;
+        header?: string;
+        footer?: string;
+        button?: string;
+        buttons?: { id: string; title: string }[];
+        sections?: { title?: string; rows: { id: string; title: string; description?: string }[] }[];
+      } = {
+        type: rawType as 'buttons' | 'list',
+        body: bodyText,
+      };
+
+      if (headerText) {
+        sanitized.header = headerText;
+      }
+
+      if (footerText) {
+        sanitized.footer = footerText;
+      }
+
+      if (sanitized.type === 'buttons') {
+        const buttons = Array.isArray(interactive?.buttons)
+          ? interactive.buttons
+              .map((button: unknown) => {
+                if (typeof button !== 'object' || button === null) {
+                  return null;
+                }
+                const id = typeof (button as any).id === 'string' ? (button as any).id.trim() : '';
+                const title = typeof (button as any).title === 'string' ? (button as any).title.trim() : '';
+                if (!id || !title) {
+                  return null;
+                }
+                return { id, title };
+              })
+              .filter((button): button is { id: string; title: string } => Boolean(button))
+          : [];
+
+        if (!buttons.length) {
+          return new Response(
+            JSON.stringify({ error: 'Botões do menu são obrigatórios' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        sanitized.buttons = buttons;
+      } else {
+        const buttonLabel = typeof interactive?.button === 'string' ? interactive.button.trim() : '';
+        sanitized.button = buttonLabel || 'Selecionar';
+
+        const sections = Array.isArray(interactive?.sections)
+          ? interactive.sections
+              .map((section: unknown) => {
+                if (typeof section !== 'object' || section === null) {
+                  return null;
+                }
+                const sectionTitle = typeof (section as any).title === 'string' ? (section as any).title.trim() : '';
+                const rows = Array.isArray((section as any).rows)
+                  ? (section as any).rows
+                      .map((row: unknown) => {
+                        if (typeof row !== 'object' || row === null) {
+                          return null;
+                        }
+                        const id = typeof (row as any).id === 'string' ? (row as any).id.trim() : '';
+                        const title = typeof (row as any).title === 'string' ? (row as any).title.trim() : '';
+                        const description = typeof (row as any).description === 'string'
+                          ? (row as any).description.trim()
+                          : '';
+                        if (!id || !title) {
+                          return null;
+                        }
+                        return {
+                          id,
+                          title,
+                          ...(description ? { description } : {}),
+                        };
+                      })
+                      .filter((row): row is { id: string; title: string; description?: string } => Boolean(row))
+                  : [];
+
+                if (!rows.length) {
+                  return null;
+                }
+
+                return {
+                  ...(sectionTitle ? { title: sectionTitle } : {}),
+                  rows,
+                };
+              })
+              .filter((section): section is { title?: string; rows: { id: string; title: string; description?: string }[] } => Boolean(section))
+          : [];
+
+        if (!sections.length) {
+          return new Response(
+            JSON.stringify({ error: 'Opções da lista são obrigatórias' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        sanitized.sections = sections;
+      }
+
+      storageContent = bodyText;
+      storageMessageType = 'interactive';
+      storageMediaType = null;
+      storageCaption = null;
+      storageDocumentName = null;
+      storageMediaUrl = null;
+      storageMediaBase64 = null;
+
+      apiPath = UAZ_MENU_ENDPOINT;
+      apiBody = buildUazInteractiveApiBody({
+        phoneNumber,
+        menu: sanitized,
+      });
       apiPath = UAZ_CONTACT_ENDPOINT;
       apiBody = buildUazContactApiBody({
         phoneNumber,
@@ -210,6 +351,11 @@ serve(async (req) => {
       const isMediaMessage = storageMessageType === 'media';
       const finalMediaType = storageMediaType ?? mediaType ?? null;
 
+      apiBody = {
+        number: phoneNumber,
+        text: storageContent,
+      };
+
       if (isMediaMessage) {
         if (!finalMediaType) {
           return new Response(
@@ -234,6 +380,7 @@ serve(async (req) => {
           caption: storageCaption,
           documentName: storageDocumentName,
         });
+      }
       } else {
         apiBody = {
           number: phoneNumber,
