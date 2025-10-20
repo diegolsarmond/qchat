@@ -45,10 +45,27 @@ serve(async (req) => {
       );
     }
 
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "URL inválida" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (parsedUrl.protocol !== "https:") {
+      return new Response(
+        JSON.stringify({ error: "A URL deve usar HTTPS" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const supabaseClient = createSupabaseClient();
     const { data: credential, error: credentialError } = await supabaseClient
       .from("credentials")
-      .select("token")
+      .select("token, subdomain")
       .eq("id", credentialId)
       .single();
 
@@ -59,7 +76,18 @@ serve(async (req) => {
       );
     }
 
-    const response = await fetch(url, {
+    const allowedHostname = credential.subdomain.endsWith(".uazapi.com")
+      ? credential.subdomain
+      : `${credential.subdomain}.uazapi.com`;
+
+    if (parsedUrl.hostname !== allowedHostname) {
+      return new Response(
+        JSON.stringify({ error: "URL não permitida para esta credencial" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const response = await fetch(parsedUrl.toString(), {
       headers: {
         token: credential.token,
       },
