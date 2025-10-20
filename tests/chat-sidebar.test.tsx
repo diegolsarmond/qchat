@@ -8,6 +8,7 @@ import ts from "typescript";
 
 type ChatSidebarModule = {
   ChatSidebar: (props: any) => any;
+  filterChatsByAttendance: (chats: any[], filter: string, currentUserId?: string) => any[];
 };
 
 let navigateHandler: (path: string) => void = () => {};
@@ -95,7 +96,7 @@ const loadChatSidebar = () => {
   const context = vm.createContext({ module, exports: module.exports, require: customRequire, console });
   new vm.Script(outputText, { filename: modulePath }).runInContext(context);
 
-  return module.exports.ChatSidebar;
+  return module.exports as ChatSidebarModule;
 };
 
 const collectChildren = (node: any) => {
@@ -130,7 +131,7 @@ const findElementWithOnClickAndText = (node: any, text: string): any => {
 };
 
 test("ChatSidebar aciona onToggleSidebar ao selecionar um chat", () => {
-  const ChatSidebar = loadChatSidebar();
+  const { ChatSidebar } = loadChatSidebar();
   const calls: string[] = [];
   const chat = {
     id: "1",
@@ -138,6 +139,8 @@ test("ChatSidebar aciona onToggleSidebar ao selecionar um chat", () => {
     lastMessage: "Olá",
     timestamp: "10:00",
     unread: 0,
+    isGroup: false,
+    attendanceStatus: "waiting",
   };
 
   const element = ChatSidebar({
@@ -151,6 +154,9 @@ test("ChatSidebar aciona onToggleSidebar ao selecionar um chat", () => {
     onToggleSidebar: () => {
       calls.push("toggle");
     },
+    activeFilter: "all",
+    onFilterChange: () => {},
+    currentUserId: "user-1",
   });
 
   const clickable = findElementWithOnClickAndText(element, chat.name);
@@ -171,7 +177,7 @@ test("ChatSidebar chama signOut e redireciona ao clicar em Sair", async () => {
     navigateCalls.push(path);
   };
 
-  const ChatSidebar = loadChatSidebar();
+  const { ChatSidebar } = loadChatSidebar();
 
   const element = ChatSidebar({
     chats: [],
@@ -180,6 +186,9 @@ test("ChatSidebar chama signOut e redireciona ao clicar em Sair", async () => {
     onAssignChat: () => {},
     showSidebar: true,
     onToggleSidebar: () => {},
+    activeFilter: "all",
+    onFilterChange: () => {},
+    currentUserId: "user-1",
   });
 
   assert.ok(elementContainsText(element, "Sair"), "Texto 'Sair' não foi renderizado");
@@ -194,4 +203,62 @@ test("ChatSidebar chama signOut e redireciona ao clicar em Sair", async () => {
 
   signOutHandler = async () => {};
   navigateHandler = () => {};
+});
+
+test("filterChatsByAttendance filtra conversas pelo status", () => {
+  const { filterChatsByAttendance } = loadChatSidebar();
+  const chats = [
+    {
+      id: "1",
+      name: "Meu atendimento",
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      isGroup: false,
+      assignedTo: "agent-1",
+      attendanceStatus: "in_service",
+    },
+    {
+      id: "2",
+      name: "Outro atendimento",
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      isGroup: false,
+      assignedTo: "agent-2",
+      attendanceStatus: "in_service",
+    },
+    {
+      id: "3",
+      name: "Aguardando",
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      isGroup: false,
+      assignedTo: undefined,
+      attendanceStatus: "waiting",
+    },
+    {
+      id: "4",
+      name: "Finalizada",
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      isGroup: false,
+      assignedTo: "agent-3",
+      attendanceStatus: "finished",
+    },
+  ];
+
+  const mine = filterChatsByAttendance(chats, "mine", "agent-1").map(chat => chat.id);
+  const inService = filterChatsByAttendance(chats, "in_service", "agent-1").map(chat => chat.id);
+  const waiting = filterChatsByAttendance(chats, "waiting", "agent-1").map(chat => chat.id);
+  const finished = filterChatsByAttendance(chats, "finished", "agent-1").map(chat => chat.id);
+  const all = filterChatsByAttendance(chats, "all", "agent-1").map(chat => chat.id);
+
+  assert.deepEqual(mine, ["1"]);
+  assert.deepEqual(inService.sort(), ["1", "2"].sort());
+  assert.deepEqual(waiting, ["3"]);
+  assert.deepEqual(finished, ["4"]);
+  assert.deepEqual(all.sort(), ["1", "2", "3", "4"].sort());
 });

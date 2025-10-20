@@ -13,6 +13,7 @@ test("ChatArea exibe mensagens mais recentes primeiro", () => {
     timestamp: "10:00",
     unread: 0,
     isGroup: false,
+    attendanceStatus: "waiting",
   };
 
   const messages: Message[] = [
