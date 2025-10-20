@@ -70,15 +70,16 @@ export const buildMediaMessagePayload = (values: MediaPromptValues): SendMessage
   const originValue = values.originValue.trim();
   const caption = values.caption?.trim();
   const documentName = values.documentName?.trim();
-  const content = caption || `[${mediaType || 'mídia'}]`;
+  const resolvedMediaType = mediaType || (values.originType === 'base64' ? 'document' : '');
+  const content = caption || `[${resolvedMediaType || 'mídia'}]`;
 
   const payload: SendMessagePayload = {
     content,
     messageType: 'media',
   };
 
-  if (mediaType) {
-    payload.mediaType = mediaType;
+  if (resolvedMediaType) {
+    payload.mediaType = resolvedMediaType;
   }
 
   if (values.originType === 'url') {
@@ -345,16 +346,18 @@ export const ChatArea = ({
 
     try {
       const mediaType = determineMediaType(file);
-      if (shouldUseBase64(mediaType)) {
-        const mediaBase64 = await fileToBase64(file);
-        const payload = buildMediaMessagePayload({
-          mediaType,
-          originType: 'base64',
-          originValue: mediaBase64,
-          documentName: mediaType === 'document' ? file.name : undefined,
-        });
-        onSendMessage(payload);
-      }
+      const originType: MediaOrigin = shouldUseBase64(mediaType) ? 'base64' : 'url';
+      const originValue =
+        originType === 'base64'
+          ? await fileToBase64(file)
+          : URL.createObjectURL(file);
+      const payload = buildMediaMessagePayload({
+        mediaType,
+        originType,
+        originValue,
+        documentName: mediaType === 'document' ? file.name : undefined,
+      });
+      onSendMessage(payload);
     } catch {
     } finally {
       target.value = "";
