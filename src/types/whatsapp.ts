@@ -33,12 +33,15 @@ export interface Message {
   timestamp: string;
   from: 'me' | 'them';
   status?: 'sent' | 'delivered' | 'read';
+  messageType?: 'text' | 'media' | 'contact';
   messageType?: 'text' | 'media' | 'location';
   mediaType?: string;
   caption?: string;
   documentName?: string;
   mediaUrl?: string;
   mediaBase64?: string;
+  contactName?: string;
+  contactPhone?: string;
   latitude?: number;
   longitude?: number;
   locationName?: string;
@@ -46,6 +49,7 @@ export interface Message {
 
 export interface SendMessagePayload {
   content: string;
+  messageType: 'text' | 'media' | 'contact';
   messageType: 'text' | 'media' | 'location';
   mediaType?: string;
   mediaUrl?: string;
@@ -53,6 +57,8 @@ export interface SendMessagePayload {
   documentName?: string;
   caption?: string;
   isPrivate?: boolean;
+  contactName?: string;
+  contactPhone?: string;
   latitude?: number;
   longitude?: number;
   locationName?: string;

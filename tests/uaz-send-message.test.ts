@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildUazMediaApiBody,
+  buildUazContactApiBody,
+  UAZ_CONTACT_ENDPOINT,
+} from '../supabase/functions/uaz-send-message/payload-helper.ts';
   buildUazLocationApiBody,
   UAZ_LOCATION_API_PATH,
 } from '../supabase/functions/uaz-send-message/payload-helper.ts';
@@ -27,6 +30,11 @@ test('buildUazMediaApiBody monta payload base64 corretamente', () => {
   });
 });
 
+test('buildUazContactApiBody monta payload de contato corretamente', () => {
+  const body = buildUazContactApiBody({
+    phoneNumber: '5531999999999',
+    contactName: 'Maria Silva',
+    contactPhone: '31988887777',
 test('buildUazLocationApiBody monta payload de localização corretamente', () => {
   const body = buildUazLocationApiBody({
     phoneNumber: '5531999999999',
@@ -37,6 +45,13 @@ test('buildUazLocationApiBody monta payload de localização corretamente', () =
 
   assert.deepStrictEqual(body, {
     number: '5531999999999',
+    name: 'Maria Silva',
+    phone: '31988887777',
+  });
+});
+
+test('endpoint de contato utiliza rota contact', () => {
+  assert.strictEqual(UAZ_CONTACT_ENDPOINT, 'contact');
     latitude: -19.923,
     longitude: -43.938,
     locationName: 'Praça da Liberdade',

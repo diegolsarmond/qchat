@@ -492,6 +492,11 @@ const Index = ({ user }: IndexProps) => {
   const handleSendMessage = async (payload: SendMessagePayload) => {
     if (!selectedChat || !credentialId) return;
 
+    const messageContent = payload.messageType === 'text'
+      ? payload.content
+      : payload.messageType === 'contact'
+      ? payload.contactName || payload.content
+      : payload.caption || `[${payload.mediaType || 'mídia'}]`;
     let messageContent = '';
 
     if (payload.messageType === 'text') {
@@ -547,6 +552,8 @@ const Index = ({ user }: IndexProps) => {
             mediaBase64: payload.mediaBase64,
             documentName: payload.documentName,
             caption: payload.caption,
+            contactName: payload.contactName,
+            contactPhone: payload.contactPhone,
             latitude: payload.latitude,
             longitude: payload.longitude,
             locationName: payload.locationName,
@@ -573,6 +580,8 @@ const Index = ({ user }: IndexProps) => {
         documentName: payload.documentName,
         mediaUrl: payload.mediaUrl,
         mediaBase64: payload.mediaBase64,
+        contactName: payload.contactName,
+        contactPhone: payload.contactPhone,
         latitude: payload.latitude,
         longitude: payload.longitude,
         locationName: payload.locationName,

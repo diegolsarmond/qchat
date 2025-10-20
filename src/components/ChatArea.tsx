@@ -18,6 +18,7 @@ import {
   X,
   Lock,
   Unlock,
+  UserPlus
   MapPin,
   Download
 } from "lucide-react";
@@ -462,6 +463,9 @@ export const ChatArea = ({
   const [isRecording, setIsRecording] = useState(false);
   const [recordingChunks, setRecordingChunks] = useState<Blob[]>([]);
   const [isPrivate, setIsPrivate] = useState(false);
+  const [showContactForm, setShowContactForm] = useState(false);
+  const [contactName, setContactName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
   const onSendMessageRef = useRef(onSendMessage);
   const recorderRef = useRef<ReturnType<typeof createAudioRecorder> | null>(null);
   const messagesStartRef = useRef<HTMLDivElement>(null);
@@ -671,6 +675,36 @@ export const ChatArea = ({
       });
       setMessageText("");
     }
+  };
+
+  const handleToggleContactForm = () => {
+    setShowContactForm((value) => {
+      if (value) {
+        setContactName("");
+        setContactPhone("");
+      }
+      return !value;
+    });
+  };
+
+  const handleSendContact = () => {
+    const name = contactName.trim();
+    const phone = contactPhone.trim();
+
+    if (!name || !phone) {
+      return;
+    }
+
+    onSendMessage({
+      content: name,
+      messageType: 'contact',
+      contactName: name,
+      contactPhone: phone,
+    });
+
+    setContactName("");
+    setContactPhone("");
+    setShowContactForm(false);
   };
 
   const handleStartRecording = () => {
@@ -1026,14 +1060,32 @@ export const ChatArea = ({
         <Button
           variant="ghost"
           size="icon"
-          className="text-primary-foreground hover:bg-white/10"
-          onClick={handleSendLocation}
-          aria-label="Enviar localização"
+          className={`text-primary-foreground hover:bg-white/10 ${
+            showContactForm ? 'bg-white/20 text-primary' : ''
+          }`}
+          onClick={handleToggleContactForm}
+          aria-label={showContactForm ? 'Fechar formulário de contato' : 'Abrir formulário de contato'}
+          disabled={isRecording}
         >
-          <MapPin className="w-5 h-5" />
+          <UserPlus className="w-5 h-5" />
         </Button>
-        
-        {isRecording ? (
+
+        {showContactForm ? (
+          <div className="flex flex-1 gap-2">
+            <Input
+              value={contactName}
+              onChange={(event) => setContactName(event.target.value)}
+              placeholder="Nome do contato"
+              className="bg-white/90"
+            />
+            <Input
+              value={contactPhone}
+              onChange={(event) => setContactPhone(event.target.value)}
+              placeholder="Telefone"
+              className="bg-white/90"
+            />
+          </div>
+        ) : isRecording ? (
           <div className="flex-1 bg-white/90 rounded-md px-3 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-destructive">
               <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
@@ -1087,6 +1139,16 @@ export const ChatArea = ({
               <Send className="w-5 h-5" />
             </Button>
           </>
+        ) : showContactForm ? (
+          <Button
+            onClick={handleSendContact}
+            size="icon"
+            className="bg-primary hover:bg-primary/90"
+            aria-label="Enviar contato"
+            disabled={!contactName.trim() || !contactPhone.trim()}
+          >
+            <Send className="w-5 h-5" />
+          </Button>
         ) : messageText.trim() ? (
           <Button
             onClick={handleSend}
