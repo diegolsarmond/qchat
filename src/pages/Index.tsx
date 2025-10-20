@@ -338,7 +338,6 @@ const Index = ({ user }: IndexProps) => {
               }
             }
           }
-          handleMessageChange
         )
         .subscribe();
 
