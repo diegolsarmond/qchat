@@ -14,6 +14,36 @@ serve(async (req) => {
   }
 
   try {
+    const authorization = req.headers.get('Authorization');
+
+    if (!authorization) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseAuthClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: { headers: { Authorization: authorization } },
+        auth: { autoRefreshToken: false, persistSession: false },
+      }
+    );
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseAuthClient.auth.getUser();
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const {
       credentialId,
       chatId,
@@ -30,7 +60,8 @@ serve(async (req) => {
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
     // Fetch credential
@@ -51,6 +82,13 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Credential missing owner' }),
         { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (credential.user_id !== user.id) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
