@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Search,
@@ -18,6 +19,9 @@ import {
   X,
   Lock,
   Unlock,
+  List
+  UserPlus
+  MapPin,
   Download
 } from "lucide-react";
 import { Chat, Message, SendMessagePayload } from "@/types/whatsapp";
@@ -27,6 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { supabase } from "@/integrations/supabase/client";
 
 type MediaOrigin = 'url' | 'base64';
 
@@ -67,6 +72,124 @@ interface MediaPromptValues {
   caption?: string;
   documentName?: string;
 }
+
+const getGlobalUrl = () => {
+  if (typeof URL !== "undefined") {
+    return URL;
+  }
+  if (typeof globalThis !== "undefined" && (globalThis as any).URL) {
+    return (globalThis as any).URL as typeof URL;
+  }
+  return undefined;
+};
+
+const createObjectUrl = (blob: Blob) => {
+  const target = getGlobalUrl();
+  if (target && typeof target.createObjectURL === "function") {
+    return target.createObjectURL(blob);
+  }
+  return "";
+};
+
+const revokeObjectUrl = (value: string) => {
+  if (!value) return;
+  const target = getGlobalUrl();
+  if (target && typeof target.revokeObjectURL === "function") {
+    target.revokeObjectURL(value);
+  }
+};
+
+const decodeBase64ToUint8Array = (value: string) => {
+  const globalAtob =
+    typeof atob === "function"
+      ? atob
+      : typeof globalThis !== "undefined" && typeof (globalThis as any).atob === "function"
+      ? (globalThis as any).atob as (input: string) => string
+      : undefined;
+
+  if (globalAtob) {
+    const binary = globalAtob(value);
+    const length = binary.length;
+    const bytes = new Uint8Array(length);
+    for (let index = 0; index < length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  }
+
+  if (typeof globalThis !== "undefined" && typeof (globalThis as any).Buffer === "function") {
+    const buffer = (globalThis as any).Buffer.from(value, "base64");
+    return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  }
+
+  return new Uint8Array();
+};
+
+const getMimeTypeForMessage = (message: Message) => {
+  const mediaType = message.mediaType?.toLowerCase() ?? "";
+  if (mediaType === "image" || mediaType === "photo") {
+    return "image/jpeg";
+  }
+  if (mediaType === "video") {
+    return "video/mp4";
+  }
+  if (mediaType === "audio" || mediaType === "ptt" || mediaType === "voice") {
+    return "audio/ogg";
+  }
+  if (mediaType === "document" && message.documentName) {
+    const lowerName = message.documentName.toLowerCase();
+    if (lowerName.endsWith(".pdf")) return "application/pdf";
+    if (lowerName.endsWith(".doc")) return "application/msword";
+    if (lowerName.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    if (lowerName.endsWith(".xls")) return "application/vnd.ms-excel";
+    if (lowerName.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    if (lowerName.endsWith(".ppt")) return "application/vnd.ms-powerpoint";
+    if (lowerName.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    if (lowerName.endsWith(".txt")) return "text/plain";
+    if (lowerName.endsWith(".json")) return "application/json";
+  }
+  if (mediaType === "document") {
+    return "application/octet-stream";
+  }
+  return "application/octet-stream";
+};
+
+const shouldUseAuthenticatedDownload = (url: string) => /uazapi\.com/i.test(url);
+
+export const requestAuthenticatedMedia = async ({
+  credentialId,
+  url,
+}: {
+  credentialId: string;
+  url: string;
+}) => {
+  const { data, error, response } = await supabase.functions.invoke<Blob>("uaz-download-media", {
+    body: { credentialId, url },
+  });
+
+  if (error || !data) {
+    return null;
+  }
+
+  const contentType = response?.headers.get("x-content-type") ?? data.type ?? null;
+  const fileName = response?.headers.get("x-file-name") ?? null;
+  const blob =
+    contentType && data instanceof Blob && data.type !== contentType
+      ? data.slice(0, data.size, contentType)
+      : data instanceof Blob
+      ? data
+      : new Blob([data], { type: contentType ?? undefined });
+
+  return { blob, contentType, fileName };
+};
+
+type ResolvedMediaSource = {
+  url: string;
+  downloadUrl: string;
+  contentType?: string | null;
+  fileName?: string | null;
+  revokable?: boolean;
+};
 
 export const buildMediaMessagePayload = (values: MediaPromptValues): SendMessagePayload => {
   const mediaType = values.mediaType.trim();
@@ -322,6 +445,7 @@ interface ChatAreaProps {
   isPrependingMessages?: boolean;
   showSidebar: boolean;
   onShowSidebar: () => void;
+  credentialId?: string | null;
 }
 
 export const ChatArea = ({
@@ -335,19 +459,36 @@ export const ChatArea = ({
   isPrependingMessages = false,
   showSidebar,
   onShowSidebar,
+  credentialId,
 }: ChatAreaProps) => {
   const [messageText, setMessageText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [recordingChunks, setRecordingChunks] = useState<Blob[]>([]);
   const [isPrivate, setIsPrivate] = useState(false);
+  const [interactiveMode, setInteractiveMode] = useState<'none' | 'buttons' | 'list'>('none');
+  const [interactiveHeader, setInteractiveHeader] = useState('');
+  const [interactiveBody, setInteractiveBody] = useState('');
+  const [interactiveFooter, setInteractiveFooter] = useState('');
+  const [interactiveButtonLabel, setInteractiveButtonLabel] = useState('Selecionar');
+  const [interactiveButtons, setInteractiveButtons] = useState<{ id: string; title: string; description?: string }[]>([
+    { id: '', title: '' },
+    { id: '', title: '' },
+  ]);
+  const [interactiveSectionTitle, setInteractiveSectionTitle] = useState('');
+  const [interactiveListRows, setInteractiveListRows] = useState<{ id: string; title: string; description?: string }[]>([
+    { id: '', title: '', description: '' },
+  ]);
+  const [showContactForm, setShowContactForm] = useState(false);
+  const [contactName, setContactName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
   const onSendMessageRef = useRef(onSendMessage);
   const recorderRef = useRef<ReturnType<typeof createAudioRecorder> | null>(null);
   const messagesStartRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isPrivateRef = useRef(isPrivate);
   const orderedMessages = useMemo(() => [...messages], [messages]);
   const audioSourcesRef = useRef<Map<string, AudioSource>>(new Map());
+  const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
   const audioSources = useMemo(() => {
     const previousSources = audioSourcesRef.current;
     const nextSources = new Map<string, AudioSource>();
@@ -355,8 +496,8 @@ export const ChatArea = ({
 
     orderedMessages.forEach((message) => {
       if (
-        message.messageType === "media" &&
-        (message.mediaType === "audio" || message.mediaType === "ptt")
+        message.messageType !== "media" ||
+        (message.mediaType !== "audio" && message.mediaType !== "ptt" && message.mediaType !== "voice")
       ) {
         let source = previousSources.get(message.id);
         if (!source) {
@@ -378,6 +519,30 @@ export const ChatArea = ({
         if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
           URL.revokeObjectURL(source.url);
         }
+        return;
+      }
+      const source = resolveAudioSource(message);
+      if (source) {
+        map.set(message.id, source);
+      }
+    });
+    return map;
+  }, [orderedMessages]);
+  const [securedMediaSources, setSecuredMediaSources] = useState<Record<string, ResolvedMediaSource>>({});
+
+  const audioSources = useMemo(() => {
+    const map = new Map<string, AudioSource>();
+    orderedMessages.forEach((message) => {
+      if (message.messageType !== "media") {
+        return;
+      }
+      const type = message.mediaType?.toLowerCase();
+      if (type !== "audio" && type !== "ptt" && type !== "voice") {
+        return;
+      }
+      const source = resolveAudioSource(message);
+      if (source) {
+        map.set(message.id, source);
       }
     });
 
@@ -422,13 +587,276 @@ export const ChatArea = ({
     };
   }, []);
 
+  const urlMediaSources = useMemo(() => {
+    const map: Record<string, ResolvedMediaSource> = {};
+    orderedMessages.forEach((message) => {
+      if (message.messageType !== "media") {
+        return;
+      }
+      if (message.mediaUrl && !shouldUseAuthenticatedDownload(message.mediaUrl)) {
+        map[message.id] = {
+          url: message.mediaUrl,
+          downloadUrl: message.mediaUrl,
+          contentType: null,
+          fileName: message.documentName ?? null,
+        };
+      }
+    });
+    return map;
+  }, [orderedMessages]);
+
+  const base64MediaSources = useMemo(() => {
+    const map: Record<string, ResolvedMediaSource> = {};
+    orderedMessages.forEach((message) => {
+      if (message.messageType !== "media") {
+        return;
+      }
+      if (!message.mediaUrl && message.mediaBase64) {
+        const bytes = decodeBase64ToUint8Array(message.mediaBase64);
+        if (!bytes.length) {
+          return;
+        }
+        const mimeType = getMimeTypeForMessage(message);
+        const blob = new Blob([bytes], { type: mimeType });
+        const objectUrl = createObjectUrl(blob);
+        if (!objectUrl) {
+          return;
+        }
+        map[message.id] = {
+          url: objectUrl,
+          downloadUrl: objectUrl,
+          contentType: mimeType,
+          fileName: message.documentName ?? null,
+          revokable: true,
+        };
+      }
+    });
+    return map;
+  }, [orderedMessages]);
+
+  useEffect(() => {
+    const urls = Object.values(base64MediaSources).map((entry) => entry.url);
+    return () => {
+      urls.forEach((url) => revokeObjectUrl(url));
+    };
+  }, [base64MediaSources]);
+
+  useEffect(() => {
+    const requiresAuthenticated = orderedMessages.filter(
+      (message) => message.messageType === "media" && message.mediaUrl && shouldUseAuthenticatedDownload(message.mediaUrl)
+    );
+
+    if (!requiresAuthenticated.length || !credentialId) {
+      setSecuredMediaSources({});
+      return;
+    }
+
+    let active = true;
+    const urlsToRevoke: string[] = [];
+
+    const resolve = async () => {
+      const resolved: Record<string, ResolvedMediaSource> = {};
+
+      for (const message of requiresAuthenticated) {
+        if (!message.mediaUrl) {
+          continue;
+        }
+        try {
+          const response = await requestAuthenticatedMedia({ credentialId, url: message.mediaUrl });
+          if (!active || !response) {
+            continue;
+          }
+          const objectUrl = createObjectUrl(response.blob);
+          if (!objectUrl) {
+            continue;
+          }
+          resolved[message.id] = {
+            url: objectUrl,
+            downloadUrl: objectUrl,
+            contentType: response.contentType,
+            fileName: response.fileName ?? message.documentName ?? null,
+            revokable: true,
+          };
+          urlsToRevoke.push(objectUrl);
+        } catch {
+        }
+      }
+
+      if (active) {
+        setSecuredMediaSources(resolved);
+      }
+    };
+
+    resolve();
+
+    return () => {
+      active = false;
+      urlsToRevoke.forEach((url) => revokeObjectUrl(url));
+    };
+  }, [orderedMessages, credentialId]);
+
+  const resolvedMediaSources = useMemo(() => {
+    return { ...urlMediaSources, ...base64MediaSources, ...securedMediaSources };
+  }, [urlMediaSources, base64MediaSources, securedMediaSources]);
+
   useEffect(() => {
     if (!isPrependingMessages) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
   }, [orderedMessages, isPrependingMessages]);
 
+  const resetInteractiveState = () => {
+    setInteractiveMode('none');
+    setInteractiveHeader('');
+    setInteractiveBody('');
+    setInteractiveFooter('');
+    setInteractiveButtonLabel('Selecionar');
+    setInteractiveButtons([
+      { id: '', title: '' },
+      { id: '', title: '' },
+    ]);
+    setInteractiveSectionTitle('');
+    setInteractiveListRows([{ id: '', title: '', description: '' }]);
+  };
+
+  const handleToggleInteractive = () => {
+    if (interactiveMode === 'none') {
+      setInteractiveMode('buttons');
+      return;
+    }
+    resetInteractiveState();
+  };
+
+  const handleAddInteractiveButton = () => {
+    setInteractiveButtons((current) => {
+      if (current.length >= 3) {
+        return current;
+      }
+      return [...current, { id: '', title: '' }];
+    });
+  };
+
+  const handleUpdateInteractiveButton = (index: number, field: 'id' | 'title', value: string) => {
+    setInteractiveButtons((current) =>
+      current.map((button, idx) =>
+        idx === index
+          ? {
+              ...button,
+              [field]: value,
+            }
+          : button,
+      ),
+    );
+  };
+
+  const handleAddInteractiveListRow = () => {
+    setInteractiveListRows((current) => {
+      if (current.length >= 10) {
+        return current;
+      }
+      return [...current, { id: '', title: '', description: '' }];
+    });
+  };
+
+  const handleUpdateInteractiveListRow = (
+    index: number,
+    field: 'id' | 'title' | 'description',
+    value: string,
+  ) => {
+    setInteractiveListRows((current) =>
+      current.map((row, idx) =>
+        idx === index
+          ? {
+              ...row,
+              [field]: value,
+            }
+          : row,
+      ),
+    );
+  };
+
+  const handleSendInteractive = () => {
+    const body = interactiveBody.trim();
+    if (!body || interactiveMode === 'none') {
+      return;
+    }
+
+    if (interactiveMode === 'buttons') {
+      const buttons = interactiveButtons
+        .map((button) => ({
+          id: button.id.trim(),
+          title: button.title.trim(),
+        }))
+        .filter((button) => button.id && button.title);
+
+      if (!buttons.length) {
+        return;
+      }
+
+      const payload: SendMessagePayload = {
+        content: body,
+        messageType: 'interactive',
+        interactive: {
+          type: 'buttons',
+          body,
+          header: interactiveHeader.trim() || undefined,
+          footer: interactiveFooter.trim() || undefined,
+          buttons,
+        },
+      };
+
+      if (isPrivate) {
+        payload.isPrivate = true;
+      }
+
+      onSendMessage(payload);
+      resetInteractiveState();
+      return;
+    }
+
+    const rows = interactiveListRows
+      .map((row) => ({
+        id: row.id.trim(),
+        title: row.title.trim(),
+        description: row.description?.trim() || undefined,
+      }))
+      .filter((row) => row.id && row.title);
+
+    if (!rows.length) {
+      return;
+    }
+
+    const payload: SendMessagePayload = {
+      content: body,
+      messageType: 'interactive',
+      interactive: {
+        type: 'list',
+        body,
+        header: interactiveHeader.trim() || undefined,
+        footer: interactiveFooter.trim() || undefined,
+        button: interactiveButtonLabel.trim() || 'Selecionar',
+        sections: [
+          {
+            title: interactiveSectionTitle.trim() || undefined,
+            rows,
+          },
+        ],
+      },
+    };
+
+    if (isPrivate) {
+      payload.isPrivate = true;
+    }
+
+    onSendMessage(payload);
+    resetInteractiveState();
+  };
+
   const handleSend = () => {
+    if (interactiveMode !== 'none') {
+      return;
+    }
+
     if (messageText.trim()) {
       onSendMessage({
         content: messageText,
@@ -437,6 +865,37 @@ export const ChatArea = ({
       });
       setMessageText("");
     }
+  };
+
+  const handleToggleContactForm = () => {
+    setShowContactForm((value) => {
+      if (value) {
+        setContactName("");
+        setContactPhone("");
+      }
+      return !value;
+    });
+  };
+
+  const handleSendContact = () => {
+    const name = contactName.trim();
+    const phone = contactPhone.trim();
+
+    if (!name || !phone) {
+      return;
+    }
+
+    onSendMessage({
+      content: name,
+      messageType: 'contact',
+      contactName: name,
+      contactPhone: phone,
+      ...(isPrivate ? { isPrivate: true } : {}),
+    });
+
+    setContactName("");
+    setContactPhone("");
+    setShowContactForm(false);
   };
 
   const handleStartRecording = () => {
@@ -452,6 +911,10 @@ export const ChatArea = ({
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (interactiveMode !== 'none') {
+      return;
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -460,6 +923,42 @@ export const ChatArea = ({
 
   const handleAttach = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleSendLocation = () => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const latitudeInput = window.prompt('Informe a latitude');
+    if (!latitudeInput) {
+      return;
+    }
+
+    const longitudeInput = window.prompt('Informe a longitude');
+    if (!longitudeInput) {
+      return;
+    }
+
+    const latitude = Number(latitudeInput);
+    const longitude = Number(longitudeInput);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return;
+    }
+
+    const locationNameInput = window.prompt('Informe o nome do local') ?? '';
+    const trimmedLocationName = locationNameInput.trim();
+    const content = trimmedLocationName || `${latitude}, ${longitude}`;
+
+    onSendMessage({
+      content,
+      messageType: 'location',
+      latitude,
+      longitude,
+      locationName: trimmedLocationName || undefined,
+      ...(isPrivate ? { isPrivate: true } : {}),
+    });
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -488,6 +987,81 @@ export const ChatArea = ({
     } finally {
       target.value = "";
     }
+  };
+
+  const renderMediaDownload = (
+    message: Message,
+    source: ResolvedMediaSource | undefined,
+  ) => {
+    if (!source?.downloadUrl) {
+      return null;
+    }
+    const downloadName = message.documentName ?? source.fileName ?? "media";
+    return (
+      <a
+        href={source.downloadUrl}
+        download={downloadName}
+        className="text-xs text-primary underline"
+        data-testid={`chat-media-download-${message.id}`}
+      >
+        {`Baixar ${downloadName}`}
+      </a>
+    );
+  };
+
+  const renderMessageContent = (message: Message) => {
+    if (message.messageType !== "media") {
+      return <p className="text-sm break-words">{message.content}</p>;
+    }
+
+    const source = resolvedMediaSources[message.id];
+    const caption = message.caption || (message.content.startsWith("[") ? "" : message.content);
+    const fileName = message.documentName ?? source?.fileName ?? null;
+    const downloadLabel = renderMediaDownload(message, source);
+    const type = message.mediaType?.toLowerCase() ?? "";
+
+    if (type === "image" || type === "photo") {
+      return (
+        <div className="space-y-2">
+          {source?.url ? (
+            <img src={source.url} alt={caption || fileName || "imagem"} className="rounded-md max-w-full" />
+          ) : null}
+          {fileName ? <p className="text-xs text-muted-foreground break-words">{fileName}</p> : null}
+          {caption ? <p className="text-sm break-words">{caption}</p> : null}
+          {downloadLabel}
+        </div>
+      );
+    }
+
+    if (type === "video") {
+      return (
+        <div className="space-y-2">
+          <video controls preload="metadata" className="rounded-md max-w-full" src={source?.url}></video>
+          {caption ? <p className="text-sm break-words">{caption}</p> : null}
+          {fileName ? <p className="text-xs text-muted-foreground break-words">{fileName}</p> : null}
+          {downloadLabel}
+        </div>
+      );
+    }
+
+    if (type === "audio" || type === "ptt" || type === "voice") {
+      return (
+        <div className="space-y-2">
+          <audio controls preload="metadata" src={source?.url}></audio>
+          {caption ? <p className="text-sm break-words">{caption}</p> : null}
+          {fileName ? <p className="text-xs text-muted-foreground break-words">{fileName}</p> : null}
+          {downloadLabel}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        {fileName ? <p className="text-sm font-medium break-words">{fileName}</p> : null}
+        {caption ? <p className="text-sm break-words">{caption}</p> : null}
+        {downloadLabel}
+      </div>
+    );
   };
 
   const getInitials = (name: string) => {
@@ -633,51 +1207,167 @@ export const ChatArea = ({
 
             return (
               <div
-                key={message.id}
-                className={`flex ${message.from === 'me' ? 'justify-end' : 'justify-start'}`}
+              className={`
+                  max-w-[65%] rounded-lg p-2 px-3 shadow-sm
+                  ${message.from === 'me'
+                    ? 'bg-[hsl(var(--whatsapp-message-out))]'
+                    : 'bg-[hsl(var(--whatsapp-message-in))]'
+                  }
+                `}
               >
-                <div
-                  className={`
-                    max-w-[65%] rounded-lg p-2 px-3 shadow-sm
-                    ${message.from === 'me'
-                      ? 'bg-[hsl(var(--whatsapp-message-out))]'
-                      : 'bg-[hsl(var(--whatsapp-message-in))]'
-                    }
-                  `}
-                >
-                  {isAudioMessage && audioSource ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <audio controls src={audioSource.url} className="max-w-full" />
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Baixar áudio"
-                        >
-                          <a href={audioSource.url} download={message.documentName ?? "audio.ogg"}>
-                            <Download className="w-4 h-4" />
-                          </a>
-                        </Button>
-                      </div>
-                      <p className="text-sm break-words">{caption}</p>
-                    </div>
-                  ) : (
-                    <p className="text-sm break-words">{message.content}</p>
-                  )}
-                  <div className="flex items-center justify-end gap-1 mt-1">
-                    <span className="text-xs text-muted-foreground">
-                      {message.timestamp}
-                    </span>
-                    {message.from === 'me' && <MessageStatus status={message.status} />}
-                  </div>
+                {renderMessageContent(message)}
+                <div className="flex items-center justify-end gap-1 mt-1">
+                  <span className="text-xs text-muted-foreground">
+                    {message.timestamp}
+                  </span>
+                  {message.from === 'me' && <MessageStatus status={message.status} />}
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
+
+      {interactiveMode !== 'none' && (
+        <div className="bg-[hsl(var(--whatsapp-header))] px-3 pt-3">
+          <div className="bg-white/90 rounded-md p-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={interactiveMode}
+                onChange={(event) =>
+                  setInteractiveMode(event.target.value as 'buttons' | 'list')
+                }
+                className="border border-input rounded-md px-2 py-1 text-sm"
+              >
+                <option value="buttons">Botões</option>
+                <option value="list">Lista</option>
+              </select>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={resetInteractiveState}
+              >
+                Cancelar
+              </Button>
+            </div>
+            <Input
+              value={interactiveHeader}
+              onChange={(event) => setInteractiveHeader(event.target.value)}
+              placeholder="Cabeçalho (opcional)"
+            />
+            <Textarea
+              value={interactiveBody}
+              onChange={(event) => setInteractiveBody(event.target.value)}
+              placeholder="Mensagem"
+              rows={3}
+            />
+            <Input
+              value={interactiveFooter}
+              onChange={(event) => setInteractiveFooter(event.target.value)}
+              placeholder="Rodapé (opcional)"
+            />
+            {interactiveMode === 'buttons' ? (
+              <div className="space-y-2">
+                {interactiveButtons.map((button, index) => (
+                  <div key={`interactive-button-${index}`} className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      value={button.id}
+                      onChange={(event) =>
+                        handleUpdateInteractiveButton(index, 'id', event.target.value)
+                      }
+                      placeholder="ID do botão"
+                    />
+                    <Input
+                      value={button.title}
+                      onChange={(event) =>
+                        handleUpdateInteractiveButton(index, 'title', event.target.value)
+                      }
+                      placeholder="Título do botão"
+                    />
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddInteractiveButton}
+                  disabled={interactiveButtons.length >= 3}
+                >
+                  Adicionar botão
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Input
+                  value={interactiveButtonLabel}
+                  onChange={(event) => setInteractiveButtonLabel(event.target.value)}
+                  placeholder="Texto do botão da lista"
+                />
+                <Input
+                  value={interactiveSectionTitle}
+                  onChange={(event) => setInteractiveSectionTitle(event.target.value)}
+                  placeholder="Título da seção (opcional)"
+                />
+                {interactiveListRows.map((row, index) => (
+                  <div key={`interactive-row-${index}`} className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      value={row.id}
+                      onChange={(event) =>
+                        handleUpdateInteractiveListRow(index, 'id', event.target.value)
+                      }
+                      placeholder="ID da opção"
+                    />
+                    <Input
+                      value={row.title}
+                      onChange={(event) =>
+                        handleUpdateInteractiveListRow(index, 'title', event.target.value)
+                      }
+                      placeholder="Título da opção"
+                    />
+                    <Input
+                      value={row.description ?? ''}
+                      onChange={(event) =>
+                        handleUpdateInteractiveListRow(index, 'description', event.target.value)
+                      }
+                      placeholder="Descrição (opcional)"
+                      className="sm:col-span-2"
+                    />
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddInteractiveListRow}
+                  disabled={interactiveListRows.length >= 10}
+                >
+                  Adicionar opção
+                </Button>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={resetInteractiveState}
+              >
+                Limpar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="bg-primary hover:bg-primary/90"
+                onClick={handleSendInteractive}
+              >
+                Enviar menu
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Input Area */}
       <div className="bg-[hsl(var(--whatsapp-header))] p-3 flex items-center gap-2">
@@ -701,8 +1391,46 @@ export const ChatArea = ({
         >
           <Paperclip className="w-5 h-5" />
         </Button>
-        
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`text-primary-foreground hover:bg-white/10 ${
+            interactiveMode !== 'none' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''
+          }`}
+          onClick={handleToggleInteractive}
+          aria-label={interactiveMode === 'none' ? 'Criar menu interativo' : 'Fechar menu interativo'}
+          aria-pressed={interactiveMode !== 'none'}
+        >
+          <List className="w-5 h-5" />
+        </Button>
+
         {isRecording ? (
+            showContactForm ? 'bg-white/20 text-primary' : ''
+          }`}
+          onClick={handleToggleContactForm}
+          aria-label={showContactForm ? 'Fechar formulário de contato' : 'Abrir formulário de contato'}
+          disabled={isRecording}
+        >
+          <UserPlus className="w-5 h-5" />
+        </Button>
+
+        {showContactForm ? (
+          <div className="flex flex-1 gap-2">
+            <Input
+              value={contactName}
+              onChange={(event) => setContactName(event.target.value)}
+              placeholder="Nome do contato"
+              className="bg-white/90"
+            />
+            <Input
+              value={contactPhone}
+              onChange={(event) => setContactPhone(event.target.value)}
+              placeholder="Telefone"
+              className="bg-white/90"
+            />
+          </div>
+        ) : isRecording ? (
           <div className="flex-1 bg-white/90 rounded-md px-3 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-destructive">
               <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
@@ -718,6 +1446,7 @@ export const ChatArea = ({
             onKeyPress={handleKeyPress}
             placeholder="Digite uma mensagem"
             className="flex-1 bg-white/90"
+            disabled={interactiveMode !== 'none'}
           />
         )}
 
@@ -756,6 +1485,16 @@ export const ChatArea = ({
               <Send className="w-5 h-5" />
             </Button>
           </>
+        ) : showContactForm ? (
+          <Button
+            onClick={handleSendContact}
+            size="icon"
+            className="bg-primary hover:bg-primary/90"
+            aria-label="Enviar contato"
+            disabled={!contactName.trim() || !contactPhone.trim()}
+          >
+            <Send className="w-5 h-5" />
+          </Button>
         ) : messageText.trim() ? (
           <Button
             onClick={handleSend}
