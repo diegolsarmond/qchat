@@ -147,6 +147,7 @@ serve(async (req) => {
       .from('messages')
       .insert({
         chat_id: chatId,
+        credential_id: credentialId,
         wa_message_id: messageData.Id || `msg_${timestamp}`,
         content: storageContent,
         message_type: storageMessageType,
@@ -158,6 +159,7 @@ serve(async (req) => {
         from_me: true,
         status: 'sent',
         message_timestamp: timestamp,
+        is_private: false,
       });
 
     if (insertError) {

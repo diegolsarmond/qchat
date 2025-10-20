@@ -129,6 +129,13 @@ export type Database = {
           sender_name: string | null
           status: string | null
           wa_message_id: string
+          credential_id: string | null
+          media_type: string | null
+          document_name: string | null
+          media_url: string | null
+          media_base64: string | null
+          caption: string | null
+          is_private: boolean
         }
         Insert: {
           chat_id: string
@@ -142,6 +149,13 @@ export type Database = {
           sender_name?: string | null
           status?: string | null
           wa_message_id: string
+          credential_id?: string | null
+          media_type?: string | null
+          document_name?: string | null
+          media_url?: string | null
+          media_base64?: string | null
+          caption?: string | null
+          is_private?: boolean
         }
         Update: {
           chat_id?: string
@@ -155,6 +169,13 @@ export type Database = {
           sender_name?: string | null
           status?: string | null
           wa_message_id?: string
+          credential_id?: string | null
+          media_type?: string | null
+          document_name?: string | null
+          media_url?: string | null
+          media_base64?: string | null
+          caption?: string | null
+          is_private?: boolean
         }
         Relationships: [
           {
@@ -162,6 +183,13 @@ export type Database = {
             columns: ["chat_id"]
             isOneToOne: false
             referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_credential_id_fkey"
+            columns: ["credential_id"]
+            isOneToOne: false
+            referencedRelation: "credentials"
             referencedColumns: ["id"]
           },
         ]
