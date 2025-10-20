@@ -26,6 +26,36 @@ import {
 
 type MediaOrigin = 'url' | 'base64';
 
+const determineMediaType = (file: File) => {
+  if (file.type.startsWith('image/')) return 'image';
+  if (file.type.startsWith('video/')) return 'video';
+  if (file.type.startsWith('audio/')) return 'audio';
+  if (file.type.startsWith('application/')) return 'document';
+  if (file.type.startsWith('text/')) return 'document';
+  return 'document';
+};
+
+const shouldUseBase64 = (mediaType: string) => {
+  return mediaType === 'image' || mediaType === 'document';
+};
+
+const fileToBase64 = (file: File) => {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const value = result.includes(',') ? result.split(',')[1] ?? '' : result;
+      if (!value) {
+        reject(new Error('invalid file content'));
+        return;
+      }
+      resolve(value);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('failed to read file'));
+    reader.readAsDataURL(file);
+  });
+};
+
 interface MediaPromptValues {
   mediaType: string;
   originType: MediaOrigin;
@@ -94,6 +124,7 @@ export const ChatArea = ({
 }: ChatAreaProps) => {
   const [messageText, setMessageText] = useState("");
   const messagesStartRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
 
   useEffect(() => {
@@ -117,43 +148,44 @@ export const ChatArea = ({
   };
 
   const handleAttach = () => {
-    const typeResponse = window.prompt("Informe o tipo da mídia (image, document, audio, video)");
-    if (!typeResponse) {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const target = event.target;
+    const file = target.files?.[0];
+    if (!file) {
+      target.value = "";
       return;
     }
 
-    const originResponse = window.prompt("Informe a origem da mídia (url/base64)");
-    if (!originResponse) {
-      return;
+    try {
+      const mediaType = determineMediaType(file);
+      if (shouldUseBase64(mediaType)) {
+        const mediaBase64 = await fileToBase64(file);
+        const payload = buildMediaMessagePayload({
+          mediaType,
+          originType: 'base64',
+          originValue: mediaBase64,
+          documentName: mediaType === 'document' ? file.name : undefined,
+        });
+        onSendMessage(payload);
+      } else {
+        const mediaUrl = URL.createObjectURL(file);
+        const payload = buildMediaMessagePayload({
+          mediaType,
+          originType: 'url',
+          originValue: mediaUrl,
+        });
+        onSendMessage(payload);
+        setTimeout(() => {
+          URL.revokeObjectURL(mediaUrl);
+        }, 0);
+      }
+    } catch {
+    } finally {
+      target.value = "";
     }
-
-    const originType = originResponse.trim().toLowerCase();
-    if (originType !== 'url' && originType !== 'base64') {
-      return;
-    }
-
-    const valueResponse = window.prompt(
-      originType === 'url'
-        ? "Informe a URL da mídia"
-        : "Informe o conteúdo base64 da mídia"
-    );
-
-    if (!valueResponse) {
-      return;
-    }
-
-    const captionResponse = window.prompt("Informe a legenda (opcional)") ?? undefined;
-    const documentNameResponse = window.prompt("Informe o nome do documento (opcional)") ?? undefined;
-
-    const payload = buildMediaMessagePayload({
-      mediaType: typeResponse,
-      originType: originType as MediaOrigin,
-      originValue: valueResponse,
-      caption: captionResponse,
-      documentName: documentNameResponse,
-    });
-
-    onSendMessage(payload);
   };
 
   const getInitials = (name: string) => {
@@ -321,11 +353,20 @@ export const ChatArea = ({
         <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-white/10">
           <Smile className="w-5 h-5" />
         </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          hidden
+          accept="image/*,video/*,audio/*,application/*"
+          onChange={handleFileChange}
+          data-testid="chat-area-file-input"
+        />
         <Button
           variant="ghost"
           size="icon"
           className="text-primary-foreground hover:bg-white/10"
           onClick={handleAttach}
+          aria-label="Anexar arquivo"
         >
           <Paperclip className="w-5 h-5" />
         </Button>
