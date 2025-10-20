@@ -556,6 +556,7 @@ const Index = ({ user }: IndexProps) => {
           isPrependingMessages={isPrependingMessages}
           showSidebar={showSidebar}
           onShowSidebar={() => setShowSidebar(true)}
+          credentialId={credentialId}
         />
       </div>
 
