@@ -5,6 +5,11 @@ import {
   buildUazMediaApiBody,
   buildUazInteractiveApiBody,
   UAZ_MENU_ENDPOINT,
+import { buildUazMediaApiBody, buildUazContactApiBody, UAZ_CONTACT_ENDPOINT } from "./payload-helper.ts";
+import {
+  buildUazMediaApiBody,
+  buildUazLocationApiBody,
+  UAZ_LOCATION_API_PATH,
 } from "./payload-helper.ts";
 
 const corsHeaders = {
@@ -29,6 +34,11 @@ serve(async (req) => {
       documentName,
       caption,
       interactive,
+      contactName,
+      contactPhone,
+      latitude,
+      longitude,
+      locationName,
     } = await req.json();
 
     console.log('[UAZ Send Message] Sending to chat:', chatId);
@@ -81,6 +91,74 @@ serve(async (req) => {
     let storageMediaUrl: string | null = null;
     let storageMediaBase64: string | null = null;
 
+    let storageContent = typeof content === 'string' ? content : '';
+    let storageMessageType: 'text' | 'media' | 'interactive' = 'text';
+    let storageMediaType: string | null = null;
+    let storageCaption: string | null = null;
+    let storageDocumentName: string | null = null;
+    let storageMediaUrl: string | null = null;
+    let storageMediaBase64: string | null = null;
+    let apiPath = 'text';
+    let apiBody: Record<string, unknown>;
+    let storageContent = '';
+    let storageMessageType: 'text' | 'media' | 'contact' = 'text';
+    let storageMediaType: string | null = null;
+    let storageCaption: string | null = null;
+    let storageDocumentName: string | null = null;
+    let storageMediaUrl: string | null = null;
+    let storageMediaBase64: string | null = null;
+
+    const normalizedType = (messageType ?? '').toString().toLowerCase();
+    const isContactMessage = normalizedType === 'contact';
+
+    if (isContactMessage) {
+      const normalizedName = (contactName ?? '').toString().trim();
+      const normalizedPhone = (contactPhone ?? '').toString().trim();
+
+      if (!normalizedName || !normalizedPhone) {
+    const isLocationMessage = messageType === 'location';
+
+    let storageContent = content ?? '';
+    let storageMessageType: 'text' | 'media' | 'location' = isLocationMessage ? 'location' : 'text';
+    let storageMediaType: string | null = null;
+    let storageCaption: string | null = null;
+    let storageDocumentName: string | null = null;
+    let storageMediaUrl: string | null = null;
+    let storageMediaBase64: string | null = null;
+
+    if (isLocationMessage) {
+      const fallbackCoordinates =
+        typeof latitude === 'number' && typeof longitude === 'number'
+          ? `${latitude}, ${longitude}`
+          : '';
+      storageContent = storageContent || locationName || fallbackCoordinates;
+    } else {
+      const resolvedStorage = resolveMessageStorage({
+        content,
+        messageType,
+        mediaType,
+        caption,
+        documentName,
+        mediaUrl,
+        mediaBase64,
+      });
+
+      storageContent = resolvedStorage.content;
+      storageMessageType = resolvedStorage.messageType;
+      storageMediaType = resolvedStorage.mediaType;
+      storageCaption = resolvedStorage.caption;
+      storageDocumentName = resolvedStorage.documentName;
+      storageMediaUrl = resolvedStorage.mediaUrl;
+      storageMediaBase64 = resolvedStorage.mediaBase64;
+    }
+
+    const isMediaMessage = storageMessageType === 'media';
+    const finalMediaType = storageMediaType ?? mediaType ?? null;
+    const normalizedFinalMediaType =
+      finalMediaType && finalMediaType.toLowerCase() === 'ptt'
+        ? 'audio'
+        : finalMediaType;
+
     let apiPath = 'text';
     let apiBody: Record<string, unknown> = {
       number: phoneNumber,
@@ -92,6 +170,12 @@ serve(async (req) => {
       if (rawType !== 'buttons' && rawType !== 'list') {
         return new Response(
           JSON.stringify({ error: 'Tipo de menu inválido' }),
+        return new Response(
+          JSON.stringify({ error: 'Tipo de menu inválido' }),
+    if (isLocationMessage) {
+      if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+        return new Response(
+          JSON.stringify({ error: 'Coordenadas são obrigatórias' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -100,6 +184,17 @@ serve(async (req) => {
       if (!bodyText) {
         return new Response(
           JSON.stringify({ error: 'Corpo do menu é obrigatório' }),
+      apiPath = UAZ_LOCATION_API_PATH;
+      apiBody = buildUazLocationApiBody({
+        phoneNumber,
+        latitude,
+        longitude,
+        locationName: locationName ?? content ?? null,
+      });
+    } else if (isMediaMessage) {
+      if (!finalMediaType) {
+        return new Response(
+          JSON.stringify({ error: 'Nome e telefone do contato são obrigatórios' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -222,6 +317,21 @@ serve(async (req) => {
         phoneNumber,
         menu: sanitized,
       });
+      });
+      apiPath = UAZ_CONTACT_ENDPOINT;
+      apiBody = buildUazContactApiBody({
+        phoneNumber,
+        contactName: normalizedName,
+        contactPhone: normalizedPhone,
+        mediaType: normalizedFinalMediaType,
+        mediaUrl: storageMediaUrl,
+        mediaBase64: storageMediaBase64,
+        caption: storageCaption,
+        documentName: storageDocumentName,
+      });
+
+      storageContent = normalizedName;
+      storageMessageType = 'contact';
     } else {
       const {
         content: resolvedContent,
@@ -282,6 +392,19 @@ serve(async (req) => {
           documentName: storageDocumentName,
         });
       }
+      } else {
+        apiBody = {
+          number: phoneNumber,
+          text: storageContent,
+        };
+      }
+    }
+
+    if (!apiBody) {
+      apiBody = {
+        number: phoneNumber,
+        text: storageContent,
+      };
     }
 
     const messageResponse = await fetch(`https://${credential.subdomain}.uazapi.com/send/${apiPath}`, {
