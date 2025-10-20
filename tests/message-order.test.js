@@ -31,11 +31,11 @@ new vm.Script(outputText, { filename: modulePath }).runInContext(context);
 
 const { normalizeFetchedMessages, mergeFetchedMessages } = module.exports;
 
-test("normalizeFetchedMessages devolve mensagens em ordem cronológica", () => {
+test("normalizeFetchedMessages devolve cópia mantendo ordem fornecida", () => {
   const fetched = [
-    { id: "3" },
-    { id: "2" },
     { id: "1" },
+    { id: "2" },
+    { id: "3" },
   ];
 
   const normalized = normalizeFetchedMessages(fetched);
@@ -46,19 +46,19 @@ test("normalizeFetchedMessages devolve mensagens em ordem cronológica", () => {
   );
   strictEqual(
     JSON.stringify(fetched.map(message => message.id)),
-    JSON.stringify(["3", "2", "1"]),
+    JSON.stringify(["1", "2", "3"]),
   );
   notStrictEqual(normalized, fetched);
 });
 
 test("mergeFetchedMessages prefixa mensagens mais antigas mantendo ordem", () => {
   const previous = [
+    { id: "3" },
     { id: "4" },
-    { id: "5" },
   ];
 
   const fetched = [
-    { id: "3" },
+    { id: "1" },
     { id: "2" },
   ];
 
@@ -66,15 +66,15 @@ test("mergeFetchedMessages prefixa mensagens mais antigas mantendo ordem", () =>
 
   strictEqual(
     JSON.stringify(result.map(message => message.id)),
-    JSON.stringify(["2", "3", "4", "5"]),
+    JSON.stringify(["1", "2", "3", "4"]),
   );
   strictEqual(
     JSON.stringify(previous.map(message => message.id)),
-    JSON.stringify(["4", "5"]),
+    JSON.stringify(["3", "4"]),
   );
   strictEqual(
     JSON.stringify(fetched.map(message => message.id)),
-    JSON.stringify(["3", "2"]),
+    JSON.stringify(["1", "2"]),
   );
 });
 
@@ -85,8 +85,8 @@ test("mergeFetchedMessages ignora mensagens duplicadas ao prefixar", () => {
   ];
 
   const fetched = [
-    { id: "3" },
     { id: "1" },
+    { id: "2" },
   ];
 
   const result = mergeFetchedMessages(previous, fetched, false);
@@ -103,8 +103,8 @@ test("mergeFetchedMessages substitui estado ao resetar", () => {
   ];
 
   const fetched = [
-    { id: "2" },
     { id: "1" },
+    { id: "2" },
   ];
 
   const result = mergeFetchedMessages(previous, fetched, true);
@@ -115,6 +115,31 @@ test("mergeFetchedMessages substitui estado ao resetar", () => {
   );
   strictEqual(
     JSON.stringify(fetched.map(message => message.id)),
-    JSON.stringify(["2", "1"]),
+    JSON.stringify(["1", "2"]),
+  );
+});
+
+test("timeline permanece crescente após enviar e carregar mensagens", () => {
+  const initialFetched = [
+    { id: "1" },
+    { id: "2" },
+  ];
+
+  const afterInitialLoad = mergeFetchedMessages([], initialFetched, true);
+  const withNewMessage = [...afterInitialLoad, { id: "3" }];
+  const olderFetched = [
+    { id: "-1" },
+    { id: "0" },
+  ];
+
+  const finalMessages = mergeFetchedMessages(withNewMessage, olderFetched, false);
+
+  strictEqual(
+    JSON.stringify(withNewMessage.map(message => message.id)),
+    JSON.stringify(["1", "2", "3"]),
+  );
+  strictEqual(
+    JSON.stringify(finalMessages.map(message => message.id)),
+    JSON.stringify(["-1", "0", "1", "2", "3"]),
   );
 });
