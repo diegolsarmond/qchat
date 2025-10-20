@@ -61,6 +61,7 @@ const Index = ({ user }: IndexProps) => {
   );
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const [isPrependingMessages, setIsPrependingMessages] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [credentialProfile, setCredentialProfile] = useState({
     profileName: null as string | null,
     phoneNumber: null as string | null,
@@ -464,6 +465,52 @@ const Index = ({ user }: IndexProps) => {
     });
   };
 
+  const handleDisconnect = async () => {
+    if (!credentialId || isDisconnecting) {
+      return;
+    }
+
+    setIsDisconnecting(true);
+
+    try {
+      const { error } = await supabase.functions.invoke('uaz-disconnect-instance', {
+        body: { credentialId },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setIsConnected(false);
+      setSelectedChat(null);
+      setChats([]);
+      setMessages([]);
+      setAssignDialogOpen(false);
+      setChatToAssign(null);
+      setMessagePagination(createInitialMessagePagination(MESSAGE_PAGE_SIZE));
+      setShowSidebar(true);
+      setIsLoadingMoreMessages(false);
+      setIsPrependingMessages(false);
+
+      if (typeof window !== 'undefined') {
+        window.localStorage?.removeItem("activeCredentialId");
+      }
+
+      toast({
+        title: "Desconectado",
+        description: "WhatsApp desconectado com sucesso",
+      });
+    } catch (error) {
+      console.error('Error disconnecting instance:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao desconectar",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDisconnecting(false);
+    }
+  };
   const handleConnectionStatusChange = useCallback(
     (status?: string | null) => {
       if (!credentialId) {
@@ -738,6 +785,8 @@ const Index = ({ user }: IndexProps) => {
           activeFilter={chatFilter}
           onFilterChange={setChatFilter}
           currentUserId={user.id}
+          onDisconnect={handleDisconnect}
+          isDisconnecting={isDisconnecting}
           profileName={credentialProfile.profileName}
           phoneNumber={credentialProfile.phoneNumber}
         />

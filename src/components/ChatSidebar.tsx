@@ -18,6 +18,8 @@ interface ChatSidebarProps {
   activeFilter: ChatFilter;
   onFilterChange: (value: ChatFilter) => void;
   currentUserId?: string;
+  onDisconnect: () => void;
+  isDisconnecting?: boolean;
   profileName?: string | null;
   phoneNumber?: string | null;
 }
@@ -69,6 +71,8 @@ export const ChatSidebar = ({
   activeFilter,
   onFilterChange,
   currentUserId,
+  onDisconnect,
+  isDisconnecting,
   profileName,
   phoneNumber,
 }: ChatSidebarProps) => {
@@ -133,6 +137,16 @@ export const ChatSidebar = ({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-3 text-sm text-primary-foreground hover:bg-white/10"
+            onClick={onDisconnect}
+            disabled={isDisconnecting}
+            data-testid="disconnect-button"
+          >
+            Desconectar
+          </Button>
           <Button
             variant="ghost"
             size="sm"
