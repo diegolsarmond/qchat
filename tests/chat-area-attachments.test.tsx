@@ -34,6 +34,7 @@ test("selecionar imagem dispara onSendMessage com base64", async () => {
       timestamp: "",
       unread: 0,
       isGroup: false,
+      attendanceStatus: "waiting",
     };
 
     const messages: Message[] = [];

@@ -7,7 +7,13 @@ import { AssignChatDialog } from "@/components/AssignChatDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
-import { Chat, Message, User as WhatsAppUser, SendMessagePayload } from "@/types/whatsapp";
+import {
+  Chat,
+  ChatFilter,
+  Message,
+  User as WhatsAppUser,
+  SendMessagePayload,
+} from "@/types/whatsapp";
 import { mergeFetchedMessages } from "@/lib/message-order";
 import {
   applyMessagePaginationUpdate,
@@ -57,6 +63,7 @@ const Index = ({ user }: IndexProps) => {
   const [chatToAssign, setChatToAssign] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [chatFilter, setChatFilter] = useState<ChatFilter>("all");
   const [messagePagination, setMessagePagination] = useState(() =>
     createInitialMessagePagination(MESSAGE_PAGE_SIZE)
   );
@@ -181,6 +188,36 @@ const Index = ({ user }: IndexProps) => {
     }
   }, [isConnected, credentialId, selectedChat]);
 
+  const deriveAttendanceStatus = (chat: any): Chat["attendanceStatus"] => {
+    const raw =
+      (chat.status || chat.attendance_status || chat.attendanceStatus || "")
+        .toString()
+        .toLowerCase();
+
+    if (raw === "finished" || raw === "finalized" || raw === "closed") {
+      return "finished";
+    }
+
+    if (
+      raw === "in_service" ||
+      raw === "in progress" ||
+      raw === "in_progress" ||
+      raw === "active"
+    ) {
+      return "in_service";
+    }
+
+    if (raw === "waiting" || raw === "pending" || raw === "queued") {
+      return "waiting";
+    }
+
+    if (chat.assigned_to || chat.assignedTo) {
+      return "in_service";
+    }
+
+    return "waiting";
+  };
+
   const fetchChats = async () => {
     if (!credentialId) return;
 
@@ -203,7 +240,8 @@ const Index = ({ user }: IndexProps) => {
           unread: c.unread_count || 0,
           avatar: c.avatar || undefined,
           isGroup: c.is_group || false,
-          assignedTo: Array.isArray(c.assigned_to) ? c.assigned_to : c.assigned_to || undefined,
+          assignedTo: c.assigned_to || undefined,
+          attendanceStatus: deriveAttendanceStatus(c),
         })));
       }
     } catch (error) {
@@ -488,6 +526,9 @@ const Index = ({ user }: IndexProps) => {
           onAssignChat={handleAssignChat}
           showSidebar={showSidebar}
           onToggleSidebar={() => setShowSidebar(false)}
+          activeFilter={chatFilter}
+          onFilterChange={setChatFilter}
+          currentUserId={user.id}
         />
         <ChatArea
           chat={selectedChat}

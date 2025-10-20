@@ -41,6 +41,7 @@ test("botão de admin dispara navegação para /admin", () => {
         timestamp: "10:00",
         unread: 0,
         isGroup: false,
+        attendanceStatus: "waiting",
       },
     ];
 
@@ -51,6 +52,11 @@ test("botão de admin dispara navegação para /admin", () => {
       selectedChat: null,
       onSelectChat: () => undefined,
       onAssignChat: () => undefined,
+      showSidebar: true,
+      onToggleSidebar: () => undefined,
+      activeFilter: "all",
+      onFilterChange: () => undefined,
+      currentUserId: "user-admin",
     });
 
     const adminButton = findByTestId(element, "admin-nav-button");
