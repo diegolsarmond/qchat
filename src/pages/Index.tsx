@@ -79,6 +79,20 @@ const Index = ({ user }: IndexProps) => {
     return map;
   }, [users]);
 
+  useEffect(() => {
+    if (!selectedChat) {
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.innerWidth < 768 && showSidebar) {
+      setShowSidebar(false);
+    }
+  }, [selectedChat, showSidebar]);
+
   const chatsWithAssignedUsers = useMemo(() =>
     chats.map((chat) => {
       const assignedIds = Array.isArray(chat.assignedTo)
