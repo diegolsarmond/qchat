@@ -273,7 +273,7 @@ type CachedAudioSource = {
   signature: string | null;
 };
 
-export const getAudioSignature = (message: Message): string | null => {
+const getAudioSignature = (message: Message): string | null => {
   if (message.mediaUrl) {
     return `url:${message.mediaUrl}`;
   }
@@ -285,7 +285,7 @@ export const getAudioSignature = (message: Message): string | null => {
   return null;
 };
 
-export const resolveAudioSource = (message: Message): AudioSource | null => {
+const resolveAudioSource = (message: Message): AudioSource | null => {
   if (message.mediaUrl) {
     return { url: message.mediaUrl, shouldRevoke: false };
   }
@@ -502,60 +502,37 @@ export const ChatArea = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const orderedMessages = useMemo(() => [...messages], [messages]);
-  const audioSourcesRef = useRef<Map<string, CachedAudioSource>>(new Map());
-  const { audioSources, urlsToCleanup } = useMemo(() => {
-    const previousSources = audioSourcesRef.current;
-    const nextSources = new Map<string, CachedAudioSource>();
+  const audioSourceCacheRef = useRef<Map<string, CachedAudioSource>>(new Map());
+  const { audioSources, urlsToRevoke } = useMemo(() => {
+    const previousCache = audioSourceCacheRef.current;
+    const nextCache = new Map<string, CachedAudioSource>();
     const exposedSources = new Map<string, AudioSource>();
-    const urlsToCleanup: string[] = [];
-    const activeIds = new Set<string>();
+    const urlsToRevoke: string[] = [];
+    const remainingPreviousIds = new Set(previousCache.keys());
 
     orderedMessages.forEach((message) => {
-      if (
-        message.messageType !== "media" ||
-        (message.mediaType !== "audio" && message.mediaType !== "ptt" && message.mediaType !== "voice")
-      ) {
+      remainingPreviousIds.delete(message.id);
+      const isAudioMessage =
+        message.messageType === "media" &&
+        (message.mediaType === "audio" || message.mediaType === "ptt" || message.mediaType === "voice");
+
+      if (!isAudioMessage) {
         return;
       }
 
       const signature = getAudioSignature(message);
-      let cachedSource = previousSources.get(message.id);
+      const cached = previousCache.get(message.id);
 
-      if (cachedSource && cachedSource.signature !== signature) {
-        if (cachedSource.source.shouldRevoke) {
-          urlsToCleanup.push(cachedSource.source.url);
-        }
-        cachedSource = undefined;
+      if (cached && cached.signature === signature) {
+        nextCache.set(message.id, cached);
+        exposedSources.set(message.id, cached.source);
+        return;
       }
 
-      if (!cachedSource) {
-        const resolvedSource = resolveAudioSource(message);
-        if (resolvedSource) {
-          cachedSource = {
-            source: resolvedSource,
-            signature,
-          };
-        }
+      if (cached?.source.shouldRevoke) {
+        urlsToRevoke.push(cached.source.url);
       }
 
-      if (cachedSource) {
-        nextSources.set(message.id, cachedSource);
-        exposedSources.set(message.id, cachedSource.source);
-        activeIds.add(message.id);
-      }
-    });
-
-    previousSources.forEach((cachedSource, id) => {
-      if (!activeIds.has(id) && cachedSource.source.shouldRevoke) {
-        urlsToCleanup.push(cachedSource.source.url);
-      }
-    });
-
-    audioSourcesRef.current = nextSources;
-
-    return { audioSources: exposedSources, urlsToCleanup };
-  }, [orderedMessages]);
-  const urlsToRevoke = urlsToCleanup;
       const resolvedSource = resolveAudioSource(message);
       if (resolvedSource) {
         const cachedSource: CachedAudioSource = {
@@ -602,9 +579,9 @@ export const ChatArea = ({
       if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
         return;
       }
-      audioSourcesRef.current.forEach((cachedSource) => {
-        if (cachedSource.source.shouldRevoke) {
-          URL.revokeObjectURL(cachedSource.source.url);
+      audioSourceCacheRef.current.forEach(({ source }) => {
+        if (source.shouldRevoke) {
+          URL.revokeObjectURL(source.url);
         }
       });
     };
@@ -1245,25 +1222,20 @@ export const ChatArea = ({
 
             return (
               <div
-                key={message.id}
-                className={`flex ${message.from === 'me' ? 'justify-end' : 'justify-start'}`}
+                className={`
+                  max-w-[65%] rounded-lg p-2 px-3 shadow-sm
+                  ${message.from === 'me'
+                    ? 'bg-[hsl(var(--whatsapp-message-out))]'
+                    : 'bg-[hsl(var(--whatsapp-message-in))]'
+                  }
+                `}
               >
-                <div
-                  className={`
-                    max-w-[65%] rounded-lg p-2 px-3 shadow-sm
-                    ${message.from === 'me'
-                      ? 'bg-[hsl(var(--whatsapp-message-out))]'
-                      : 'bg-[hsl(var(--whatsapp-message-in))]'
-                    }
-                  `}
-                >
-                  {renderMessageContent(message)}
-                  <div className="flex items-center justify-end gap-1 mt-1">
-                    <span className="text-xs text-muted-foreground">
-                      {message.timestamp}
-                    </span>
-                    {message.from === 'me' && <MessageStatus status={message.status} />}
-                  </div>
+                {renderMessageContent(message)}
+                <div className="flex items-center justify-end gap-1 mt-1">
+                  <span className="text-xs text-muted-foreground">
+                    {message.timestamp}
+                  </span>
+                  {message.from === 'me' && <MessageStatus status={message.status} />}
                 </div>
               </div>
             );
@@ -1448,19 +1420,6 @@ export const ChatArea = ({
           <List className="w-5 h-5" />
         </Button>
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={`text-primary-foreground hover:bg-white/10 ${
-            showContactForm ? 'bg-white/20 text-primary' : ''
-          }`}
-          onClick={handleToggleContactForm}
-          aria-label={showContactForm ? 'Fechar formulário de contato' : 'Abrir formulário de contato'}
-          disabled={isRecording}
-        >
-          <UserPlus className="w-5 h-5" />
-        </Button>
           <Button
             variant="ghost"
             size="icon"
