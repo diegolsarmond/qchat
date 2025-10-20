@@ -45,15 +45,7 @@ type IndexProps = {
 };
 
 const Index = ({ user }: IndexProps) => {
-  const [credentialId, setCredentialId] = useState<string | null>(() => {
-    if (typeof window !== "undefined") {
-      const stored = window.localStorage?.getItem("activeCredentialId");
-      if (stored) {
-        return stored;
-      }
-    }
-    return null;
-  });
+  const [credentialId, setCredentialId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
@@ -115,6 +107,44 @@ const Index = ({ user }: IndexProps) => {
   }, [users]);
 
   useEffect(() => {
+    let active = true;
+
+    if (!user?.id || credentialId) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const fetchCredential = async () => {
+      const { data, error } = await supabase
+        .from('credentials')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error('Error fetching credentials:', error);
+        toast({
+          title: "Erro",
+          description: "Falha ao carregar credenciais",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (active) {
+        const existing = data && data.length > 0 ? data[0].id : null;
+        setCredentialId(existing);
+      }
+    };
+
+    fetchCredential();
+
+    return () => {
+      active = false;
+    };
+  }, [user, credentialId, toast]);
     if (!selectedChat) {
       return;
     }
@@ -178,7 +208,7 @@ const Index = ({ user }: IndexProps) => {
             event: '*',
             schema: 'public',
             table: 'chats',
-            filter: `credential_id=eq.${credentialId}`
+            filter: `credential_id=eq.${credentialId},user_id=eq.${user.id}`
           },
           (payload) => {
             console.log('Chat change:', payload);
@@ -229,7 +259,8 @@ const Index = ({ user }: IndexProps) => {
           {
             event: 'INSERT',
             schema: 'public',
-            table: 'messages'
+            table: 'messages',
+            filter: `credential_id=eq.${credentialId},user_id=eq.${user.id}`
           },
           handleMessageChange
         )
@@ -287,7 +318,7 @@ const Index = ({ user }: IndexProps) => {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('uaz-fetch-chats', {
-        body: { credentialId }
+        body: { credentialId, userId: user.id }
       });
 
       if (error) throw error;
@@ -341,6 +372,7 @@ const Index = ({ user }: IndexProps) => {
           limit: MESSAGE_PAGE_SIZE,
           offset: options.reset ? 0 : messagePagination.offset,
           order: 'desc',
+          userId: user.id,
         }
       });
 
@@ -440,7 +472,7 @@ const Index = ({ user }: IndexProps) => {
     if (credentialId) {
       try {
         const { data } = await supabase.functions.invoke('uaz-fetch-contact-details', {
-          body: { credentialId, chatId: chat.id }
+          body: { credentialId, chatId: chat.id, userId: user.id }
         });
         
         if (data) {
@@ -489,6 +521,7 @@ const Index = ({ user }: IndexProps) => {
           from_me: true,
           is_private: true,
           message_timestamp: new Date().toISOString(),
+          user_id: user.id,
         });
 
         if (error) throw error;
@@ -504,6 +537,7 @@ const Index = ({ user }: IndexProps) => {
             mediaBase64: payload.mediaBase64,
             documentName: payload.documentName,
             caption: payload.caption,
+            userId: user.id,
           }
         });
 
@@ -566,7 +600,8 @@ const Index = ({ user }: IndexProps) => {
       const { error } = await supabase
         .from('chats')
         .update({ assigned_to: userId })
-        .eq('id', chatToAssign);
+        .eq('id', chatToAssign)
+        .eq('user_id', user.id);
 
       if (error) throw error;
 
