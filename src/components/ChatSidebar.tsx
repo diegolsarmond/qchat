@@ -68,6 +68,16 @@ export const ChatSidebar = ({
       .slice(0, 2);
   };
 
+  const getAssignedLabels = (chat: Chat) => {
+    if (chat.assignedUserNames && chat.assignedUserNames.length > 0) {
+      return chat.assignedUserNames;
+    }
+    if (Array.isArray(chat.assignedTo)) {
+      return chat.assignedTo;
+    }
+    return chat.assignedTo ? [chat.assignedTo] : [];
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/login");
@@ -193,16 +203,39 @@ export const ChatSidebar = ({
                 )}
               </div>
 
-              {chat.assignedTo && (
-                <div className="mt-1">
-                  <Badge variant="outline" className="text-xs">
-                    Atribuído: {chat.assignedTo}
-                  </Badge>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="font-semibold text-sm truncate">{chat.name}</h3>
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    {chat.timestamp}
+                  </span>
                 </div>
-              )}
+
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground truncate flex-1">
+                    {chat.lastMessage}
+                  </p>
+                  {chat.unread > 0 && (
+                    <Badge className="ml-2 bg-primary text-primary-foreground rounded-full px-2 py-0 text-xs flex-shrink-0">
+                      {chat.unread}
+                    </Badge>
+                  )}
+                </div>
+
+                {assignedLabels.length > 0 && (
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <span className="text-xs text-muted-foreground">Atribuído:</span>
+                    {assignedLabels.map((label) => (
+                      <Badge key={label} variant="outline" className="text-xs">
+                        {label}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </ScrollArea>
     </div>
   );

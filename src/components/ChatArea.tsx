@@ -15,7 +15,9 @@ import {
   Check,
   CheckCheck,
   ArrowLeft,
-  X
+  X,
+  Lock,
+  Unlock
 } from "lucide-react";
 import { Chat, Message, SendMessagePayload } from "@/types/whatsapp";
 import {
@@ -70,15 +72,16 @@ export const buildMediaMessagePayload = (values: MediaPromptValues): SendMessage
   const originValue = values.originValue.trim();
   const caption = values.caption?.trim();
   const documentName = values.documentName?.trim();
-  const content = caption || `[${mediaType || 'mídia'}]`;
+  const resolvedMediaType = mediaType || (values.originType === 'base64' ? 'document' : '');
+  const content = caption || `[${resolvedMediaType || 'mídia'}]`;
 
   const payload: SendMessagePayload = {
     content,
     messageType: 'media',
   };
 
-  if (mediaType) {
-    payload.mediaType = mediaType;
+  if (resolvedMediaType) {
+    payload.mediaType = resolvedMediaType;
   }
 
   if (values.originType === 'url') {
@@ -115,6 +118,7 @@ const blobToBase64 = (blob: Blob) =>
 
 interface AudioRecorderOptions {
   getOnSendMessage: () => (payload: SendMessagePayload) => void;
+  getIsPrivate: () => boolean;
   setIsRecording: (value: boolean) => void;
   setChunks: (chunks: Blob[]) => void;
 }
@@ -128,6 +132,7 @@ interface AudioRecorderControls {
 
 export const createAudioRecorder = ({
   getOnSendMessage,
+  getIsPrivate,
   setIsRecording,
   setChunks,
 }: AudioRecorderOptions): AudioRecorderControls => {
@@ -192,6 +197,9 @@ export const createAudioRecorder = ({
             originType: "base64",
             originValue: base64,
           });
+          if (getIsPrivate()) {
+            payload.isPrivate = true;
+          }
           getOnSendMessage()(payload);
         } catch {}
       };
@@ -275,19 +283,27 @@ export const ChatArea = ({
   const [messageText, setMessageText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [recordingChunks, setRecordingChunks] = useState<Blob[]>([]);
+  const [isPrivate, setIsPrivate] = useState(false);
   const onSendMessageRef = useRef(onSendMessage);
   const recorderRef = useRef<ReturnType<typeof createAudioRecorder> | null>(null);
   const messagesStartRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isPrivateRef = useRef(isPrivate);
   const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
 
   useEffect(() => {
     onSendMessageRef.current = onSendMessage;
   }, [onSendMessage]);
 
+  useEffect(() => {
+    isPrivateRef.current = isPrivate;
+  }, [isPrivate]);
+
   if (!recorderRef.current) {
     recorderRef.current = createAudioRecorder({
       getOnSendMessage: () => onSendMessageRef.current,
+      getIsPrivate: () => isPrivateRef.current,
       setIsRecording,
       setChunks: setRecordingChunks,
     });
@@ -301,13 +317,17 @@ export const ChatArea = ({
 
   useEffect(() => {
     if (!isPrependingMessages) {
-      messagesStartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
   }, [orderedMessages, isPrependingMessages]);
 
   const handleSend = () => {
     if (messageText.trim()) {
-      onSendMessage({ content: messageText, messageType: 'text' });
+      onSendMessage({
+        content: messageText,
+        messageType: 'text',
+        ...(isPrivate ? { isPrivate: true } : {}),
+      });
       setMessageText("");
     }
   };
@@ -345,16 +365,18 @@ export const ChatArea = ({
 
     try {
       const mediaType = determineMediaType(file);
-      if (shouldUseBase64(mediaType)) {
-        const mediaBase64 = await fileToBase64(file);
-        const payload = buildMediaMessagePayload({
-          mediaType,
-          originType: 'base64',
-          originValue: mediaBase64,
-          documentName: mediaType === 'document' ? file.name : undefined,
-        });
-        onSendMessage(payload);
-      }
+      const originType: MediaOrigin = shouldUseBase64(mediaType) ? 'base64' : 'url';
+      const originValue =
+        originType === 'base64'
+          ? await fileToBase64(file)
+          : URL.createObjectURL(file);
+      const payload = buildMediaMessagePayload({
+        mediaType,
+        originType,
+        originValue,
+        documentName: mediaType === 'document' ? file.name : undefined,
+      });
+      onSendMessage(payload);
     } catch {
     } finally {
       target.value = "";
@@ -482,6 +504,18 @@ export const ChatArea = ({
       }}>
         <div className="space-y-3 max-w-4xl mx-auto">
           <div ref={messagesStartRef} />
+          {hasMoreMessages && onLoadMoreMessages && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onLoadMoreMessages}
+                disabled={isLoadingMoreMessages}
+              >
+                {isLoadingMoreMessages ? "Carregando..." : "Carregar mensagens anteriores"}
+              </Button>
+            </div>
+          )}
           {orderedMessages.map((message) => (
             <div
               key={message.id}
@@ -506,18 +540,7 @@ export const ChatArea = ({
               </div>
             </div>
           ))}
-          {hasMoreMessages && onLoadMoreMessages && (
-            <div className="flex justify-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onLoadMoreMessages}
-                disabled={isLoadingMoreMessages}
-              >
-                {isLoadingMoreMessages ? "Carregando..." : "Carregar mensagens anteriores"}
-              </Button>
-            </div>
-          )}
+          <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
 
@@ -554,6 +577,7 @@ export const ChatArea = ({
           </div>
         ) : (
           <Input
+            data-testid="chat-area-input"
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
             onKeyPress={handleKeyPress}
@@ -561,6 +585,21 @@ export const ChatArea = ({
             className="flex-1 bg-white/90"
           />
         )}
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={`text-primary-foreground hover:bg-white/10 ${
+            isPrivate ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''
+          }`}
+          onClick={() => setIsPrivate((value) => !value)}
+          aria-label={isPrivate ? 'Desativar modo privado' : 'Ativar modo privado'}
+          aria-pressed={isPrivate}
+          data-testid="chat-area-private-toggle"
+        >
+          {isPrivate ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+        </Button>
 
         {isRecording ? (
           <>

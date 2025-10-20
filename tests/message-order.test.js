@@ -78,6 +78,25 @@ test("mergeFetchedMessages prefixa mensagens mais antigas mantendo ordem", () =>
   );
 });
 
+test("mergeFetchedMessages ignora mensagens duplicadas ao prefixar", () => {
+  const previous = [
+    { id: "2" },
+    { id: "3" },
+  ];
+
+  const fetched = [
+    { id: "3" },
+    { id: "1" },
+  ];
+
+  const result = mergeFetchedMessages(previous, fetched, false);
+
+  strictEqual(
+    JSON.stringify(result.map(message => message.id)),
+    JSON.stringify(["1", "2", "3"]),
+  );
+});
+
 test("mergeFetchedMessages substitui estado ao resetar", () => {
   const previous = [
     { id: "10" },
