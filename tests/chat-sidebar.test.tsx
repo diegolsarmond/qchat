@@ -14,7 +14,7 @@ type ChatSidebarModule = {
 let navigateHandler: (path: string) => void = () => {};
 let signOutHandler: () => Promise<void> = async () => {};
 
-const loadChatSidebar = () => {
+export const loadChatSidebar = () => {
   const modulePath = fileURLToPath(new URL("../src/components/ChatSidebar.tsx", import.meta.url));
   const source = readFileSync(modulePath, "utf-8");
   const { outputText } = ts.transpileModule(source, {
@@ -106,7 +106,7 @@ const collectChildren = (node: any) => {
   return Array.isArray(children) ? children : [children];
 };
 
-const elementContainsText = (node: any, text: string): boolean => {
+export const elementContainsText = (node: any, text: string): boolean => {
   if (Array.isArray(node)) {
     return node.some(child => elementContainsText(child, text));
   }
