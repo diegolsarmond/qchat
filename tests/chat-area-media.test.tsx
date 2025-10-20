@@ -181,14 +181,17 @@ test("renderiza documento com link de download", () => {
 });
 
 test("requestAuthenticatedMedia aciona função edge", async () => {
-  const originalInvoke = supabase.functions.invoke;
-  const blob = new Blob(["conteúdo"], { type: "image/png" });
-  let captured: { name: string; body: any } | null = null;
+  const functionsClient = supabase.functions as any;
+  const proto = Object.getPrototypeOf(functionsClient);
+  const originalInvoke = proto.invoke;
+  const encoder = new TextEncoder();
+  const arrayBuffer = encoder.encode("conteúdo").buffer;
+  let captured: { name: string; body: any; responseType: any } | null = null;
 
-  (supabase.functions as any).invoke = async (name: string, options: any) => {
-    captured = { name, body: options?.body };
+  proto.invoke = async function (this: unknown, name: string, options: any) {
+    captured = { name, body: options?.body, responseType: options?.responseType };
     return {
-      data: blob,
+      data: arrayBuffer,
       error: null,
       response: {
         headers: {
@@ -214,10 +217,11 @@ test("requestAuthenticatedMedia aciona função edge", async () => {
       credentialId: "cred-1",
       url: "https://subdominio.uazapi.com/midia",
     });
+    assert.equal((captured as any)?.responseType, "arraybuffer");
     assert.equal(result?.contentType, "image/png");
     assert.equal(result?.fileName, "foto.png");
     assert.equal(result?.blob.type, "image/png");
   } finally {
-    (supabase.functions as any).invoke = originalInvoke;
+    proto.invoke = originalInvoke;
   }
 });
