@@ -8,10 +8,32 @@ import ts from "typescript";
 
 const createReactStub = () => {
   const state: any[] = [];
-  const cleanups: Array<() => void> = [];
+  const cleanups: Array<(() => void) | undefined> = [];
+  const effectDeps: Array<any[] | undefined> = [];
+  const refs: any[] = [];
   let hookIndex = 0;
+  let effectIndex = 0;
+  let refIndex = 0;
 
   const getInitialValue = (value: any) => (typeof value === "function" ? value() : value);
+
+  const hasChanged = (prev: any[] | undefined, next: any[] | undefined) => {
+    if (!next) {
+      return true;
+    }
+    if (!prev) {
+      return true;
+    }
+    if (prev.length !== next.length) {
+      return true;
+    }
+    for (let i = 0; i < next.length; i++) {
+      if (prev[i] !== next[i]) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   const react: any = {
     useState(initial: any) {
@@ -24,23 +46,41 @@ const createReactStub = () => {
       };
       return [state[index], setState];
     },
-    useEffect(callback: () => void | (() => void)) {
-      const cleanup = callback();
-      if (typeof cleanup === "function") {
-        cleanups.push(cleanup);
+    useEffect(callback: () => void | (() => void), deps?: any[]) {
+      const index = effectIndex++;
+      const nextDeps = deps ? [...deps] : undefined;
+      if (hasChanged(effectDeps[index], nextDeps)) {
+        if (cleanups[index]) {
+          cleanups[index]!();
+        }
+        effectDeps[index] = nextDeps;
+        const cleanup = callback();
+        cleanups[index] = typeof cleanup === "function" ? cleanup : undefined;
       }
+    },
+    useRef(initial: any) {
+      const index = refIndex++;
+      if (refs.length <= index) {
+        refs.push({ current: initial });
+      }
+      return refs[index];
     },
   };
 
   react.__render = (Component: any, props: any) => {
     hookIndex = 0;
+    effectIndex = 0;
+    refIndex = 0;
     return Component(props);
   };
 
   react.__runCleanups = () => {
-    while (cleanups.length) {
-      const cleanup = cleanups.pop();
-      cleanup?.();
+    for (let i = cleanups.length - 1; i >= 0; i--) {
+      const cleanup = cleanups[i];
+      if (cleanup) {
+        cleanup();
+        cleanups[i] = undefined;
+      }
     }
   };
 
@@ -220,4 +260,69 @@ test("CredentialSetup inclui user_id ao salvar credenciais", async () => {
   assert.equal(insertCalls[0].instance_name, "Minha Instância");
   assert.deepEqual(selectFilters, [{ column: "user_id", value: "user-123" }]);
   assert.deepEqual(onSetupCompleteCalls, ["cred-xyz"]);
+});
+
+test("CredentialSetup carrega credenciais apenas uma vez", async () => {
+  const reactStub = createReactStub();
+  let authCalls = 0;
+  let fromCalls = 0;
+
+  const supabaseStub = {
+    auth: {
+      async getUser() {
+        authCalls += 1;
+        return { data: { user: { id: "user-123" } }, error: null };
+      },
+    },
+    from: (table: string) => {
+      if (table !== "credentials") {
+        throw new Error(`Unexpected table ${table}`);
+      }
+      fromCalls += 1;
+      return {
+        select: () => ({
+          eq: () => ({
+            order: () => ({
+              limit: async () => ({ data: [{ id: "cred-abc" }], error: null }),
+            }),
+          }),
+        }),
+      };
+    },
+  };
+
+  const module = loadCredentialSetup(reactStub, { supabase: supabaseStub });
+  const { CredentialSetup } = module;
+
+  const firstCalls: string[] = [];
+  const firstHandler = (id: string) => {
+    firstCalls.push(`first:${id}`);
+  };
+
+  reactStub.__render(CredentialSetup, {
+    onSetupComplete: firstHandler,
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(authCalls, 1);
+  assert.equal(fromCalls, 1);
+  assert.deepEqual(firstCalls, ["first:cred-abc"]);
+
+  const secondCalls: string[] = [];
+  const secondHandler = (id: string) => {
+    secondCalls.push(`second:${id}`);
+  };
+
+  reactStub.__render(CredentialSetup, {
+    onSetupComplete: secondHandler,
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(authCalls, 1);
+  assert.equal(fromCalls, 1);
+  assert.deepEqual(secondCalls, []);
 });

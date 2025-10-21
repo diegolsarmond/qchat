@@ -488,10 +488,13 @@ const Index = ({ user }: IndexProps) => {
     }
   };
 
-  const handleSetupComplete = (id: string) => {
-    setCredentialId(id);
-    clearCredentialProfile();
-  };
+  const handleSetupComplete = useCallback(
+    (id: string) => {
+      setCredentialId(id);
+      clearCredentialProfile();
+    },
+    [clearCredentialProfile]
+  );
 
   const handleConnected = () => {
     setIsConnected(true);
