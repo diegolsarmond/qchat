@@ -7,7 +7,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import React from "react";
 
-const loadLoginModule = () => {
+const loadLoginModule = (overrides = {}) => {
   const modulePath = fileURLToPath(new URL("../Login.tsx", import.meta.url));
   const source = readFileSync(modulePath, "utf-8");
   const { outputText } = ts.transpileModule(source, {
@@ -23,13 +23,36 @@ const loadLoginModule = () => {
   const module = { exports: {} };
   const requireFn = createRequire(modulePath);
 
-  const stubComponent = () => () => null;
+  const actualReact = overrides.react ?? React;
+  const stubComponent = overrides.stubComponent ?? (() => () => null);
+
+  const createUiComponents = () => {
+    const defaultComponents = {
+      default: stubComponent(),
+      Button: stubComponent(),
+      Input: stubComponent(),
+      Label: stubComponent(),
+      Card: stubComponent(),
+      CardHeader: stubComponent(),
+      CardTitle: stubComponent(),
+      CardContent: stubComponent(),
+    };
+
+    if (!overrides.uiComponents) {
+      return defaultComponents;
+    }
+
+    return { ...defaultComponents, ...overrides.uiComponents };
+  };
 
   const customRequire = (specifier) => {
-    if (specifier === "react") return React;
+    if (specifier === "react") return actualReact;
     if (specifier === "react/jsx-runtime") return requireFn(specifier);
     if (specifier === "react-router-dom") {
-      return { useNavigate: () => () => {} };
+      return {
+        useNavigate: () => () => {},
+        Link: overrides.linkComponent ?? stubComponent(),
+      };
     }
     if (specifier === "@/integrations/supabase/client") {
       return { supabase: { auth: { signInWithPassword: async () => ({ data: null, error: null }) } } };
@@ -38,16 +61,7 @@ const loadLoginModule = () => {
       return { useToast: () => ({ toast: () => {} }) };
     }
     if (specifier.startsWith("@/components/ui/")) {
-      return {
-        default: stubComponent(),
-        Button: stubComponent(),
-        Input: stubComponent(),
-        Label: stubComponent(),
-        Card: stubComponent(),
-        CardHeader: stubComponent(),
-        CardTitle: stubComponent(),
-        CardContent: stubComponent(),
-      };
+      return createUiComponents();
     }
     return requireFn(specifier);
   };
@@ -136,4 +150,128 @@ test("performLogin exibe erro quando signInWithPassword lança exceção", async
     variant: "destructive",
   });
   assert.deepEqual(loadingStates, [true, false]);
+});
+
+test("botão de visualizar senha alterna o tipo do campo", () => {
+  const actualReact = React;
+  const states = [];
+  let callIndex = 0;
+
+  const reactStub = {
+    ...actualReact,
+    useState: (initialValue) => {
+      const index = callIndex;
+      callIndex += 1;
+
+      if (states.length <= index) {
+        states.push(initialValue);
+      }
+
+      const setState = (value) => {
+        const nextValue = typeof value === "function" ? value(states[index]) : value;
+        states[index] = nextValue;
+      };
+
+      return [states[index], setState];
+    },
+  };
+
+  const resetHooks = () => {
+    callIndex = 0;
+  };
+
+  const uiComponents = {
+    Button: (props) => reactStub.createElement("button", props),
+    Input: (props) => reactStub.createElement("input", props),
+    Label: (props) => reactStub.createElement("label", props),
+    Card: (props) => reactStub.createElement("div", props),
+    CardHeader: (props) => reactStub.createElement("div", props),
+    CardTitle: (props) => reactStub.createElement("div", props),
+    CardContent: (props) => reactStub.createElement("div", props),
+  };
+
+  const linkComponent = (props) => reactStub.createElement("a", props);
+
+  const module = loadLoginModule({
+    react: reactStub,
+    uiComponents,
+    linkComponent,
+  });
+
+  const Login = module.default;
+
+  const renderLogin = () => {
+    resetHooks();
+    return Login();
+  };
+
+  const findElement = (node, predicate) => {
+    if (!node || typeof node !== "object") {
+      return null;
+    }
+
+    if (predicate(node)) {
+      return node;
+    }
+
+    const { children } = node.props ?? {};
+
+    if (!children) {
+      return null;
+    }
+
+    const childArray = Array.isArray(children) ? children : [children];
+
+    for (const child of childArray) {
+      if (typeof child !== "object" || child === null) {
+        continue;
+      }
+
+      const found = findElement(child, predicate);
+
+      if (found) {
+        return found;
+      }
+    }
+
+    return null;
+  };
+
+  const firstRender = renderLogin();
+
+  const passwordInput = findElement(
+    firstRender,
+    (element) => element.type === "input" && element.props?.id === "password",
+  );
+
+  assert.ok(passwordInput);
+  assert.equal(passwordInput.props.type, "password");
+
+  const toggleButton = findElement(
+    firstRender,
+    (element) => element.type === "button" && element.props?.type === "button",
+  );
+
+  assert.ok(toggleButton);
+  assert.equal(toggleButton.props.children, "Mostrar");
+
+  toggleButton.props.onClick();
+
+  const secondRender = renderLogin();
+
+  const updatedInput = findElement(
+    secondRender,
+    (element) => element.type === "input" && element.props?.id === "password",
+  );
+
+  assert.ok(updatedInput);
+  assert.equal(updatedInput.props.type, "text");
+
+  const updatedButton = findElement(
+    secondRender,
+    (element) => element.type === "button" && element.props?.type === "button",
+  );
+
+  assert.ok(updatedButton);
+  assert.equal(updatedButton.props.children, "Ocultar");
 });
