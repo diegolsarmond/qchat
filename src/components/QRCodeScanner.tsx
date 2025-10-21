@@ -44,12 +44,12 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
       }
 
       // Se já está conectado, redireciona imediatamente
-      if (data.connected || data.status === 'connected') {
+      if (data?.connected || data?.status === 'connected') {
         setStatus("Já conectado!");
         setLoading(false);
         toast({
           title: "Conectado",
-          description: `WhatsApp já conectado: ${data.phoneNumber || 'número detectado'}`,
+          description: `WhatsApp já conectado: ${data?.phoneNumber || 'número detectado'}`,
         });
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
@@ -60,15 +60,15 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
       }
 
       // Se está no processo de conexão e tem QR code
-      if (data.qrCode) {
-        setQrCode(data.qrCode);
+      if (data?.qrCode) {
+        setQrCode(data?.qrCode ?? null);
         setLoading(false);
         setStatus("Escaneie o QR Code com seu WhatsApp");
         return;
       }
 
       // Se está aguardando QR code
-      if (data.status === 'connecting' || data.status === 'disconnected') {
+      if (data?.status === 'connecting' || data?.status === 'disconnected') {
         setLoading(true);
         setStatus("Gerando QR Code...");
         return;
