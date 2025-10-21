@@ -108,7 +108,33 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const instanceData = await instanceResponse.json();
+    type InstanceData = {
+      status?: { connected?: boolean } | string | null;
+      instance?: {
+        status?: string | null;
+        qrcode?: string | null;
+        profileName?: string | null;
+        owner?: string | null;
+        paircode?: string | null;
+      } | null;
+    };
+
+    const instanceText = await instanceResponse.text();
+    let instanceData: InstanceData = {};
+
+    if (instanceText) {
+      try {
+        instanceData = JSON.parse(instanceText) as InstanceData;
+      } catch (parseError) {
+        console.error('[UAZ Get QR] Failed to parse UAZ response:', parseError);
+        console.error('[UAZ Get QR] Raw response:', instanceText);
+        return new Response(
+          JSON.stringify({ error: 'Invalid response from UAZ API' }),
+          { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
+
     console.log('[UAZ Get QR] Instance status:', instanceData.status);
     console.log('[UAZ Get QR] Full response:', JSON.stringify(instanceData, null, 2));
 
