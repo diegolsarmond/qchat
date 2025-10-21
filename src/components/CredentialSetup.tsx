@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,11 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
   const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const { toast } = useToast();
+  const setupCompleteRef = useRef(onSetupComplete);
+
+  useEffect(() => {
+    setupCompleteRef.current = onSetupComplete;
+  }, [onSetupComplete]);
 
   useEffect(() => {
     let active = true;
@@ -41,7 +46,7 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
         .limit(1);
 
       if (active && existing && existing.length > 0) {
-        onSetupComplete(existing[0].id);
+        setupCompleteRef.current(existing[0].id);
       }
     };
 
@@ -50,7 +55,7 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
     return () => {
       active = false;
     };
-  }, [onSetupComplete]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
