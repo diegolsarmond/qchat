@@ -5,12 +5,9 @@ import type { Database } from './types';
 type EnvSource = Record<string, string | undefined>;
 
 const loadImportMetaEnv = (): EnvSource | undefined => {
-  try {
-    const meta = new Function('return import.meta')() as ImportMeta & { env?: EnvSource };
-    return meta?.env;
-  } catch {
-    return undefined;
-  }
+  return typeof import.meta !== 'undefined'
+    ? ((import.meta as ImportMeta & { env?: EnvSource })?.env ?? undefined)
+    : undefined;
 };
 
 const processEnv = typeof process !== 'undefined'

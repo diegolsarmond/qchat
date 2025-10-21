@@ -1,25 +1,57 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { ensureCredentialOwnership } from "../_shared/credential-guard.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+const handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { credentialId, chatId } = await req.json();
-    
-    console.log('[UAZ Fetch Contact Details] Fetching for chat:', chatId);
+    const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization');
+    const accessToken = typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
+      ? authHeader.slice(7).trim()
+      : null;
+
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({ error: 'Credenciais ausentes' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
     const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      supabaseUrl,
+      serviceRoleKey,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      },
     );
+
+    const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+
+    if (authError || !authData?.user) {
+      return new Response(
+        JSON.stringify({ error: 'Credenciais inválidas' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { credentialId, chatId } = await req.json();
+
+    console.log('[UAZ Fetch Contact Details] Fetching for chat:', chatId);
 
     // Fetch credential
     const { data: credential, error: credError } = await supabaseClient
@@ -28,18 +60,23 @@ serve(async (req) => {
       .eq('id', credentialId)
       .single();
 
-    if (credError || !credential) {
-      return new Response(
-        JSON.stringify({ error: 'Credential not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (credError) {
+      console.error('[UAZ Fetch Contact Details] Failed to fetch credential:', credError);
     }
+
+    const ownership = ensureCredentialOwnership(credential, authData.user.id, corsHeaders);
+
+    if (ownership.response) {
+      return ownership.response;
+    }
+    const ownedCredential = ownership.credential;
 
     // Fetch chat to get wa_chat_id
     const { data: chat, error: chatError } = await supabaseClient
       .from('chats')
       .select('wa_chat_id')
       .eq('id', chatId)
+      .eq('user_id', authData.user.id)
       .single();
 
     if (chatError || !chat) {
@@ -55,12 +92,12 @@ serve(async (req) => {
     console.log('[UAZ Fetch Contact Details] Fetching from UAZ API for:', phoneNumber);
 
     // Fetch contact details from UAZ API using POST /chat/details
-    const detailsResponse = await fetch(`https://${credential.subdomain}.uazapi.com/chat/details`, {
+    const detailsResponse = await fetch(`https://${ownedCredential.subdomain}.uazapi.com/chat/details`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'token': credential.token,
+        'token': ownedCredential.token,
       },
       body: JSON.stringify({
         number: phoneNumber,
@@ -88,10 +125,11 @@ serve(async (req) => {
         name: contactDetails.name || contactDetails.wa_name || contactDetails.wa_contactName || phoneNumber,
         avatar: contactDetails.image || null,
       })
-      .eq('id', chatId);
+      .eq('id', chatId)
+      .eq('user_id', authData.user.id);
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         name: contactDetails.name || contactDetails.wa_name || contactDetails.wa_contactName,
         avatar: contactDetails.image,
         phone: contactDetails.phone || phoneNumber,
@@ -108,4 +146,8 @@ serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-});
+};
+
+serve(handler);
+
+export { handler };

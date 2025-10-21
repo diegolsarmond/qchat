@@ -16,6 +16,7 @@ const baseChat: Chat = {
   avatar: undefined,
   isGroup: false,
   assignedTo: undefined,
+  attendanceStatus: "waiting",
 };
 
 const baseMessages: Message[] = [
@@ -51,6 +52,11 @@ const createSidebar = (showSidebar: boolean) => (
     onAssignChat={noop}
     showSidebar={showSidebar}
     onToggleSidebar={noop}
+    activeFilter="all"
+    onFilterChange={noop}
+    currentUserId="user-mobile"
+    onDisconnect={() => {}}
+    isDisconnecting={false}
   />
 );
 

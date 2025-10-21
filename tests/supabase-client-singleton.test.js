@@ -26,6 +26,8 @@ test('reutiliza a mesma instância do cliente supabase', async () => {
       fileName: modulePath,
     });
 
+    const patchedOutput = outputText.replace(/import\.meta/g, 'globalThis.__import_meta__');
+
     const requireFn = createRequire(modulePath);
 
     let createCount = 0;
@@ -48,11 +50,11 @@ test('reutiliza a mesma instância do cliente supabase', async () => {
       return requireFn(specifier);
     };
 
-    const script = new vm.Script(outputText, { filename: modulePath });
+    const script = new vm.Script(patchedOutput, { filename: modulePath });
 
     const createContext = (initial = {}) => {
       const module = { exports: {} };
-      return vm.createContext({
+      const context = vm.createContext({
         module,
         exports: module.exports,
         require: customRequire,
@@ -60,6 +62,8 @@ test('reutiliza a mesma instância do cliente supabase', async () => {
         console,
         ...initial,
       });
+      context.globalThis = context;
+      return context;
     };
 
     const firstContext = createContext();

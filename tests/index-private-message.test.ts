@@ -7,32 +7,38 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const createReactStub = () => {
-  const state = [];
-  const cleanups = [];
+  const state: any[] = [];
+  const cleanups: Array<() => void> = [];
   let hookIndex = 0;
 
-  const getInitialValue = (value) => (typeof value === "function" ? value() : value);
+  const getInitialValue = (value: any) => (typeof value === "function" ? value() : value);
 
-  const react = {
-    useState(initial) {
+  const react: any = {
+    useState(initial: any) {
       const index = hookIndex++;
       if (state.length <= index) {
         state.push(getInitialValue(initial));
       }
-      const setState = (value) => {
+      const setState = (value: any) => {
         state[index] = typeof value === "function" ? value(state[index]) : value;
       };
       return [state[index], setState];
     },
-    useEffect(callback) {
+    useEffect(callback: () => void | (() => void)) {
       const cleanup = callback();
       if (typeof cleanup === "function") {
         cleanups.push(cleanup);
       }
     },
+    useMemo(factory: () => any) {
+      return factory();
+    },
+    useCallback<T extends (...args: any[]) => any>(callback: T) {
+      return callback;
+    },
   };
 
-  react.__render = (Component, props) => {
+  react.__render = (Component: any, props: any) => {
     hookIndex = 0;
     return Component(props);
   };
@@ -42,15 +48,15 @@ const createReactStub = () => {
   react.__runCleanups = () => {
     while (cleanups.length) {
       const cleanup = cleanups.pop();
-      cleanup();
+      cleanup?.();
     }
   };
 
   return react;
 };
 
-const createStubComponent = (type) => {
-  const component = (props) => {
+const createStubComponent = (type: string) => {
+  const component: any = (props: any) => {
     component.lastProps = props;
     component.callCount = (component.callCount || 0) + 1;
     return { type, props };
@@ -59,7 +65,7 @@ const createStubComponent = (type) => {
   return component;
 };
 
-const loadIndexPage = (reactStub, overrides = {}) => {
+const loadIndexPage = (reactStub: any, overrides: any = {}) => {
   const modulePath = fileURLToPath(new URL("../src/pages/Index.tsx", import.meta.url));
   const source = readFileSync(modulePath, "utf-8");
   const { outputText } = ts.transpileModule(source, {
@@ -72,7 +78,7 @@ const loadIndexPage = (reactStub, overrides = {}) => {
     fileName: modulePath,
   });
 
-  const module = { exports: {} };
+  const module: any = { exports: {} };
   const requireFn = createRequire(modulePath);
 
   const credentialSetup = overrides.credentialSetup ?? createStubComponent("CredentialSetup");
@@ -85,7 +91,7 @@ const loadIndexPage = (reactStub, overrides = {}) => {
     functions: {
       invoke: async () => ({ data: {}, error: null }),
     },
-    from: (table) => {
+    from: (table: string) => {
       if (table === "credentials") {
         return {
           select: () => ({
@@ -131,7 +137,7 @@ const loadIndexPage = (reactStub, overrides = {}) => {
     removeChannel() {},
   };
 
-  const customRequire = (specifier) => {
+  const customRequire = (specifier: string) => {
     if (specifier === "react") {
       return reactStub;
     }
@@ -161,16 +167,16 @@ const loadIndexPage = (reactStub, overrides = {}) => {
     }
     if (specifier === "@/lib/message-order") {
       return {
-        mergeFetchedMessages: (previous, fetched, reset) =>
+        mergeFetchedMessages: (previous: any[], fetched: any[], reset: boolean) =>
           reset ? [...fetched] : [...previous, ...fetched],
       };
     }
     if (specifier === "@/lib/message-pagination") {
       return {
-        createInitialMessagePagination: (limit) => ({ limit, offset: 0, hasMore: false }),
-        applyMessagePaginationUpdate: (prev, receivedCount, options) => ({
+        createInitialMessagePagination: (limit: number) => ({ limit, offset: 0, hasMore: false }),
+        applyMessagePaginationUpdate: (prev: any, received: number, options: any) => ({
           limit: options.limit ?? prev.limit,
-          offset: options.reset ? Math.max(0, receivedCount) : prev.offset + Math.max(0, receivedCount),
+          offset: options.reset ? Math.max(0, received) : prev.offset + Math.max(0, received),
           hasMore: options.hasMore,
         }),
       };
@@ -193,37 +199,148 @@ const loadIndexPage = (reactStub, overrides = {}) => {
 
   new vm.Script(outputText, { filename: modulePath }).runInContext(context);
 
-  return { module: module.exports, stubs: { credentialSetup, qrCodeScanner } };
+  return { module: module.exports, stubs: { credentialSetup, qrCodeScanner, chatSidebar, chatArea } };
 };
 
-test("Index mantém credentialId após reload", async () => {
-  const credentialQueries = [];
+test("mensagens privadas registram apenas no banco", async () => {
   const reactStub = createReactStub();
-  const credentialComponent = createStubComponent("CredentialSetup");
-  const qrComponent = createStubComponent("QRCodeScanner");
+  const insertCalls: any[] = [];
+  const invokeCalls: any[] = [];
+  const credentialQueries: Array<{ column: string; value: string }> = [];
+
+  const supabaseStub = {
+    functions: {
+      invoke: async (...args: any[]) => {
+        invokeCalls.push(args);
+        return { data: { messageId: "remote" }, error: null };
+      },
+    },
+    from: (table: string) => {
+      if (table === "messages") {
+        return {
+          insert: async (payload: any) => {
+            insertCalls.push(payload);
+            return { data: null, error: null };
+          },
+        };
+      }
+      if (table === "credentials") {
+        return {
+          select: () => ({
+            eq: (column: string, value: string) => {
+              credentialQueries.push({ column, value });
+              return {
+                order: () => ({
+                  limit: async () => ({ data: [{ id: "cred-privado" }], error: null }),
+                }),
+              };
+            },
+          }),
+        };
+      }
+      if (table === "chats") {
+        return {
+          update: () => ({
+            eq: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "users") {
+        return {
+          select: async () => ({ data: [], error: null }),
+        };
+      }
+      return {
+        select: async () => ({ data: [], error: null }),
+      };
+    },
+    channel: () => ({
+      on() {
+        return this;
+      },
+      subscribe() {
+        return this;
+      },
+    }),
+    removeChannel() {},
+  };
+
+  const chatSidebar = createStubComponent("ChatSidebar");
+  const chatArea = createStubComponent("ChatArea");
+
+  const { module, stubs } = loadIndexPage(reactStub, {
+    chatSidebar,
+    chatArea,
+    supabase: supabaseStub,
+    toast: () => {},
+  });
+
+  const Index = module.default ?? module;
+
+  reactStub.__render(Index, { user: { id: "user" } });
+  await Promise.resolve();
+  await Promise.resolve();
+  const readyRender = reactStub.__render(Index, { user: { id: "user" } });
+  assert.equal(readyRender.type, stubs.qrCodeScanner);
+  assert.deepEqual(credentialQueries, [{ column: "user_id", value: "user" }]);
+
+  stubs.qrCodeScanner.lastProps.onConnected();
+  reactStub.__render(Index, { user: { id: "user" } });
+
+  stubs.chatSidebar.lastProps.onSelectChat({
+    id: "chat-1",
+    name: "Cliente",
+    lastMessage: "",
+    timestamp: "",
+    unread: 0,
+    isGroup: false,
+  });
+
+  reactStub.__render(Index, { user: { id: "user" } });
+
+  const payload = {
+    content: "Mensagem privada",
+    messageType: "text" as const,
+    isPrivate: true,
+  };
+
+  stubs.chatArea.lastProps.onSendMessage(payload);
+
+  assert.equal(invokeCalls.length, 0);
+  assert.equal(insertCalls.length, 1);
+  assert.equal(insertCalls[0].content, "Mensagem privada");
+  assert.equal(insertCalls[0].is_private, true);
+  assert.equal(insertCalls[0].user_id, "user");
+});
+
+test("mensagens de localização privadas usam coordenadas como conteúdo", async () => {
+  const reactStub = createReactStub();
+  const insertCalls: any[] = [];
 
   const supabaseStub = {
     functions: {
       invoke: async () => ({ data: {}, error: null }),
     },
-    from: (table) => {
+    from: (table: string) => {
+      if (table === "messages") {
+        return {
+          insert: async (payload: any) => {
+            insertCalls.push(payload);
+            return { data: null, error: null };
+          },
+        };
+      }
       if (table === "credentials") {
         return {
           select: () => ({
-            eq: (column, value) => {
-              credentialQueries.push({ column, value });
-              return {
-                order: () => ({
-                  limit: async () => ({ data: [], error: null }),
-                }),
-              };
-            },
+            eq: () => ({
+              order: () => ({
+                limit: async () => ({ data: [{ id: "cred-local" }], error: null }),
+              }),
+            }),
           }),
-        };
-      }
-      if (table === "users") {
-        return {
-          select: async () => ({ data: [], error: null }),
         };
       }
       if (table === "chats") {
@@ -235,9 +352,9 @@ test("Index mantém credentialId após reload", async () => {
           }),
         };
       }
-      if (table === "messages") {
+      if (table === "users") {
         return {
-          insert: async () => ({ data: null, error: null }),
+          select: async () => ({ data: [], error: null }),
         };
       }
       return {
@@ -254,91 +371,50 @@ test("Index mantém credentialId após reload", async () => {
     }),
     removeChannel() {},
   };
+
+  const chatSidebar = createStubComponent("ChatSidebar");
+  const chatArea = createStubComponent("ChatArea");
 
   const { module, stubs } = loadIndexPage(reactStub, {
-    credentialSetup: credentialComponent,
-    qrCodeScanner: qrComponent,
+    chatSidebar,
+    chatArea,
     supabase: supabaseStub,
+    toast: () => {},
   });
+
   const Index = module.default ?? module;
-  const firstRender = reactStub.__render(Index, { user: { id: "user" } });
-  assert.equal(firstRender.type, stubs.credentialSetup);
 
-  firstRender.props.onSetupComplete("cred-1");
+  reactStub.__render(Index, { user: { id: "user" } });
+  await Promise.resolve();
+  await Promise.resolve();
+  reactStub.__render(Index, { user: { id: "user" } });
 
-  const secondRender = reactStub.__render(Index, { user: { id: "user" } });
-  assert.equal(secondRender.type, stubs.qrCodeScanner);
-  assert.equal(reactStub.__getState()[0], "cred-1");
-  assert.deepEqual(credentialQueries, [{ column: "user_id", value: "user" }]);
+  stubs.qrCodeScanner.lastProps.onConnected();
+  reactStub.__render(Index, { user: { id: "user" } });
 
-  const reloadQueries = [];
-  const reactStubReload = createReactStub();
-  const reloadCredentialStub = createStubComponent("CredentialSetup");
-  const reloadQrStub = createStubComponent("QRCodeScanner");
-  const supabaseReloadStub = {
-    functions: {
-      invoke: async () => ({ data: {}, error: null }),
-    },
-    from: (table) => {
-      if (table === "credentials") {
-        return {
-          select: () => ({
-            eq: (column, value) => {
-              reloadQueries.push({ column, value });
-              return {
-                order: () => ({
-                  limit: async () => ({ data: [{ id: "cred-1" }], error: null }),
-                }),
-              };
-            },
-          }),
-        };
-      }
-      if (table === "users") {
-        return {
-          select: async () => ({ data: [], error: null }),
-        };
-      }
-      if (table === "chats") {
-        return {
-          update: () => ({
-            eq: () => ({
-              eq: async () => ({ error: null }),
-            }),
-          }),
-        };
-      }
-      if (table === "messages") {
-        return {
-          insert: async () => ({ data: null, error: null }),
-        };
-      }
-      return {
-        select: async () => ({ data: [], error: null }),
-      };
-    },
-    channel: () => ({
-      on() {
-        return this;
-      },
-      subscribe() {
-        return this;
-      },
-    }),
-    removeChannel() {},
+  stubs.chatSidebar.lastProps.onSelectChat({
+    id: "chat-geo",
+    name: "Cliente",
+    lastMessage: "",
+    timestamp: "",
+    unread: 0,
+    isGroup: false,
+  });
+
+  reactStub.__render(Index, { user: { id: "user" } });
+
+  const payload = {
+    content: "",
+    messageType: "location" as const,
+    isPrivate: true,
+    latitude: -15.793889,
+    longitude: -47.882778,
   };
 
-  const { module: moduleReload, stubs: reloadStubs } = loadIndexPage(reactStubReload, {
-    credentialSetup: reloadCredentialStub,
-    qrCodeScanner: reloadQrStub,
-    supabase: supabaseReloadStub,
-  });
-  const IndexReload = moduleReload.default ?? moduleReload;
-  reactStubReload.__render(IndexReload, { user: { id: "user" } });
-  await Promise.resolve();
-  await Promise.resolve();
-  const reloadRender = reactStubReload.__render(IndexReload, { user: { id: "user" } });
-  assert.equal(reloadRender.type, reloadStubs.qrCodeScanner);
-  assert.equal(reactStubReload.__getState()[0], "cred-1");
-  assert.deepEqual(reloadQueries, [{ column: "user_id", value: "user" }]);
+  stubs.chatArea.lastProps.onSendMessage(payload);
+
+  assert.equal(insertCalls.length, 1);
+  assert.equal(insertCalls[0].content, "-15.793889, -47.882778");
+  assert.equal(insertCalls[0].is_private, true);
+  assert.equal(insertCalls[0].chat_id, "chat-geo");
 });

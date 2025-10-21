@@ -1,11 +1,10 @@
-import { Search, MessageSquare, MoreVertical, Users, Filter } from "lucide-react";
+import { Search, MoreVertical, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Chat } from "@/types/whatsapp";
+import { Chat, ChatFilter } from "@/types/whatsapp";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -16,15 +15,66 @@ interface ChatSidebarProps {
   onAssignChat: (chatId: string) => void;
   showSidebar: boolean;
   onToggleSidebar: () => void;
+  activeFilter: ChatFilter;
+  onFilterChange: (value: ChatFilter) => void;
+  currentUserId?: string;
+  onDisconnect: () => void;
+  isDisconnecting?: boolean;
+  profileName?: string | null;
+  phoneNumber?: string | null;
 }
+
+export const filterChatsByAttendance = (
+  chats: Chat[],
+  filter: ChatFilter,
+  currentUserId?: string,
+) => {
+  if (filter === "mine") {
+    if (!currentUserId) {
+      return [];
+    }
+    return chats.filter(chat => {
+      if (!chat.assignedTo) {
+        return false;
+      }
+
+      if (Array.isArray(chat.assignedTo)) {
+        return chat.assignedTo.includes(currentUserId);
+      }
+
+      return chat.assignedTo === currentUserId;
+    });
+  }
+
+  if (filter === "in_service") {
+    return chats.filter(chat => chat.attendanceStatus === "in_service");
+  }
+
+  if (filter === "waiting") {
+    return chats.filter(chat => chat.attendanceStatus === "waiting");
+  }
+
+  if (filter === "finished") {
+    return chats.filter(chat => chat.attendanceStatus === "finished");
+  }
+
+  return chats;
+};
 
 export const ChatSidebar = ({
   chats,
   selectedChat,
   onSelectChat,
-  onAssignChat,
+  onAssignChat: _onAssignChat,
   showSidebar,
   onToggleSidebar,
+  activeFilter,
+  onFilterChange,
+  currentUserId,
+  onDisconnect,
+  isDisconnecting,
+  profileName,
+  phoneNumber,
 }: ChatSidebarProps) => {
   const navigate = useNavigate();
   const getInitials = (name: string) => {
@@ -36,10 +86,34 @@ export const ChatSidebar = ({
       .slice(0, 2);
   };
 
+  const displayProfileName = profileName?.trim() || "Perfil sem nome";
+  const displayPhoneNumber = phoneNumber?.trim() || "Número não disponível";
+  const profileInitial = displayProfileName.charAt(0).toUpperCase() || "U";
+
+  const getAssignedLabels = (chat: Chat) => {
+    if (chat.assignedUserNames && chat.assignedUserNames.length > 0) {
+      return chat.assignedUserNames;
+    }
+    if (Array.isArray(chat.assignedTo)) {
+      return chat.assignedTo;
+    }
+    return chat.assignedTo ? [chat.assignedTo] : [];
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/login");
   };
+
+  const filteredChats = filterChatsByAttendance(chats, activeFilter, currentUserId);
+
+  const filters: { value: ChatFilter; label: string; testId: string }[] = [
+    { value: "mine", label: "Minhas", testId: "filter-mine" },
+    { value: "in_service", label: "Em atendimento", testId: "filter-in-service" },
+    { value: "waiting", label: "Aguardando Atendimento", testId: "filter-waiting" },
+    { value: "finished", label: "Finalizadas", testId: "filter-finished" },
+    { value: "all", label: "Tudo", testId: "filter-all" },
+  ];
 
   return (
     <div
@@ -50,11 +124,29 @@ export const ChatSidebar = ({
       <div className="bg-[hsl(var(--whatsapp-header))] p-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Avatar className="w-10 h-10">
-            <AvatarFallback className="bg-primary/20 text-primary">U</AvatarFallback>
+            <AvatarFallback className="bg-primary/20 text-primary">{profileInitial}</AvatarFallback>
           </Avatar>
-          <h1 className="text-lg font-semibold text-primary-foreground">WhatsApp</h1>
+          <div>
+            <h1 className="text-lg font-semibold text-primary-foreground">WhatsApp</h1>
+            <p className="text-sm text-primary-foreground/80" data-testid="sidebar-profile-name">
+              {displayProfileName}
+            </p>
+            <p className="text-xs text-primary-foreground/70" data-testid="sidebar-phone-number">
+              {displayPhoneNumber}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-3 text-sm text-primary-foreground hover:bg-white/10"
+            onClick={onDisconnect}
+            disabled={isDisconnecting}
+            data-testid="disconnect-button"
+          >
+            Desconectar
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -94,67 +186,80 @@ export const ChatSidebar = ({
 
       {/* Filters */}
       <div className="px-2 pb-2">
-        <Tabs defaultValue="all" className="w-full">
-          <TabsList className="w-full grid grid-cols-4 bg-transparent">
-            <TabsTrigger value="all" className="text-xs">Tudo</TabsTrigger>
-            <TabsTrigger value="unread" className="text-xs">Não lidas</TabsTrigger>
-            <TabsTrigger value="favorites" className="text-xs">Favoritas</TabsTrigger>
-            <TabsTrigger value="groups" className="text-xs">Grupos</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="grid grid-cols-2 gap-2">
+          {filters.map(filter => (
+            <Button
+              key={filter.value}
+              data-testid={filter.testId}
+              variant={activeFilter === filter.value ? "secondary" : "ghost"}
+              size="sm"
+              className="text-xs"
+              onClick={() => onFilterChange(filter.value)}
+            >
+              {filter.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {/* Chat List */}
       <ScrollArea className="flex-1">
-        {chats.map((chat) => (
-          <div
-            key={chat.id}
-            onClick={() => {
-              onToggleSidebar();
-              onSelectChat(chat);
-            }}
-            className={`
-              flex items-center gap-3 p-3 cursor-pointer transition-colors
-              hover:bg-[hsl(var(--whatsapp-hover))]
-              ${selectedChat?.id === chat.id ? 'bg-[hsl(var(--whatsapp-hover))]' : ''}
-            `}
-          >
-            <Avatar className="w-12 h-12 flex-shrink-0">
-              <AvatarImage src={chat.avatar} />
-              <AvatarFallback className="bg-primary/10 text-primary">
-                {getInitials(chat.name)}
-              </AvatarFallback>
-            </Avatar>
-            
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="font-semibold text-sm truncate">{chat.name}</h3>
-                <span className="text-xs text-muted-foreground flex-shrink-0">
-                  {chat.timestamp}
-                </span>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground truncate flex-1">
-                  {chat.lastMessage}
-                </p>
-                {chat.unread > 0 && (
-                  <Badge className="ml-2 bg-primary text-primary-foreground rounded-full px-2 py-0 text-xs flex-shrink-0">
-                    {chat.unread}
-                  </Badge>
+        {filteredChats.map((chat) => {
+          const assignedLabels = getAssignedLabels(chat);
+
+          return (
+            <div
+              key={chat.id}
+              onClick={() => {
+                onToggleSidebar();
+                onSelectChat(chat);
+              }}
+              className={`
+                flex items-center gap-3 p-3 cursor-pointer transition-colors
+                hover:bg-[hsl(var(--whatsapp-hover))]
+                ${selectedChat?.id === chat.id ? 'bg-[hsl(var(--whatsapp-hover))]' : ''}
+              `}
+            >
+              <Avatar className="w-12 h-12 flex-shrink-0">
+                <AvatarImage src={chat.avatar} />
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  {getInitials(chat.name)}
+                </AvatarFallback>
+              </Avatar>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="font-semibold text-sm truncate">{chat.name}</h3>
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    {chat.timestamp}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground truncate flex-1">
+                    {chat.lastMessage}
+                  </p>
+                  {chat.unread > 0 && (
+                    <Badge className="ml-2 bg-primary text-primary-foreground rounded-full px-2 py-0 text-xs flex-shrink-0">
+                      {chat.unread}
+                    </Badge>
+                  )}
+                </div>
+
+                {assignedLabels.length > 0 && (
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    <span className="text-xs text-muted-foreground">Atribuído:</span>
+                    {assignedLabels.map((label) => (
+                      <Badge key={label} variant="outline" className="text-xs">
+                        {label}
+                      </Badge>
+                    ))}
+                  </div>
                 )}
               </div>
-
-              {chat.assignedTo && (
-                <div className="mt-1">
-                  <Badge variant="outline" className="text-xs">
-                    Atribuído: {chat.assignedTo}
-                  </Badge>
-                </div>
-              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </ScrollArea>
     </div>
   );

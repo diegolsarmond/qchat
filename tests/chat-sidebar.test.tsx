@@ -8,12 +8,13 @@ import ts from "typescript";
 
 type ChatSidebarModule = {
   ChatSidebar: (props: any) => any;
+  filterChatsByAttendance: (chats: any[], filter: string, currentUserId?: string) => any[];
 };
 
 let navigateHandler: (path: string) => void = () => {};
 let signOutHandler: () => Promise<void> = async () => {};
 
-const loadChatSidebar = () => {
+export const loadChatSidebar = () => {
   const modulePath = fileURLToPath(new URL("../src/components/ChatSidebar.tsx", import.meta.url));
   const source = readFileSync(modulePath, "utf-8");
   const { outputText } = ts.transpileModule(source, {
@@ -95,7 +96,7 @@ const loadChatSidebar = () => {
   const context = vm.createContext({ module, exports: module.exports, require: customRequire, console });
   new vm.Script(outputText, { filename: modulePath }).runInContext(context);
 
-  return module.exports.ChatSidebar;
+  return module.exports as ChatSidebarModule;
 };
 
 const collectChildren = (node: any) => {
@@ -105,7 +106,10 @@ const collectChildren = (node: any) => {
   return Array.isArray(children) ? children : [children];
 };
 
-const elementContainsText = (node: any, text: string): boolean => {
+export const elementContainsText = (node: any, text: string): boolean => {
+  if (Array.isArray(node)) {
+    return node.some(child => elementContainsText(child, text));
+  }
   if (typeof node === "string") {
     return node.toString().includes(text);
   }
@@ -130,7 +134,7 @@ const findElementWithOnClickAndText = (node: any, text: string): any => {
 };
 
 test("ChatSidebar aciona onToggleSidebar ao selecionar um chat", () => {
-  const ChatSidebar = loadChatSidebar();
+  const { ChatSidebar } = loadChatSidebar();
   const calls: string[] = [];
   const chat = {
     id: "1",
@@ -138,6 +142,8 @@ test("ChatSidebar aciona onToggleSidebar ao selecionar um chat", () => {
     lastMessage: "Olá",
     timestamp: "10:00",
     unread: 0,
+    isGroup: false,
+    attendanceStatus: "waiting",
   };
 
   const element = ChatSidebar({
@@ -151,6 +157,11 @@ test("ChatSidebar aciona onToggleSidebar ao selecionar um chat", () => {
     onToggleSidebar: () => {
       calls.push("toggle");
     },
+    activeFilter: "all",
+    onFilterChange: () => {},
+    currentUserId: "user-1",
+    onDisconnect: () => {},
+    isDisconnecting: false,
   });
 
   const clickable = findElementWithOnClickAndText(element, chat.name);
@@ -171,7 +182,7 @@ test("ChatSidebar chama signOut e redireciona ao clicar em Sair", async () => {
     navigateCalls.push(path);
   };
 
-  const ChatSidebar = loadChatSidebar();
+  const { ChatSidebar } = loadChatSidebar();
 
   const element = ChatSidebar({
     chats: [],
@@ -180,6 +191,11 @@ test("ChatSidebar chama signOut e redireciona ao clicar em Sair", async () => {
     onAssignChat: () => {},
     showSidebar: true,
     onToggleSidebar: () => {},
+    activeFilter: "all",
+    onFilterChange: () => {},
+    currentUserId: "user-1",
+    onDisconnect: () => {},
+    isDisconnecting: false,
   });
 
   assert.ok(elementContainsText(element, "Sair"), "Texto 'Sair' não foi renderizado");
@@ -194,4 +210,105 @@ test("ChatSidebar chama signOut e redireciona ao clicar em Sair", async () => {
 
   signOutHandler = async () => {};
   navigateHandler = () => {};
+});
+
+test("ChatSidebar exibe rótulos de atribuição quando disponíveis", () => {
+  const { ChatSidebar } = loadChatSidebar();
+
+  const chat = {
+    id: "1",
+    name: "Cliente Importante",
+    lastMessage: "Precisamos falar",
+    timestamp: "11:30",
+    unread: 2,
+    isGroup: false,
+    attendanceStatus: "in_service",
+    assignedUserNames: ["Ana", "Carlos"],
+  };
+
+  const element = ChatSidebar({
+    chats: [chat],
+    selectedChat: null,
+    onSelectChat: () => {},
+    onAssignChat: () => {},
+    showSidebar: true,
+    onToggleSidebar: () => {},
+    activeFilter: "all",
+    onFilterChange: () => {},
+    currentUserId: "agent-123",
+    onDisconnect: () => {},
+    isDisconnecting: false,
+  });
+
+  assert.ok(elementContainsText(element, "Atribuído:"), "Legenda de atribuição não foi renderizada");
+  assert.ok(elementContainsText(element, "Ana"), "Nome do primeiro agente não foi exibido");
+  assert.ok(elementContainsText(element, "Carlos"), "Nome do segundo agente não foi exibido");
+});
+
+test("filterChatsByAttendance filtra conversas pelo status", () => {
+  const { filterChatsByAttendance } = loadChatSidebar();
+  const chats = [
+    {
+      id: "1",
+      name: "Meu atendimento",
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      isGroup: false,
+      assignedTo: "agent-1",
+      attendanceStatus: "in_service",
+    },
+    {
+      id: "2",
+      name: "Outro atendimento",
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      isGroup: false,
+      assignedTo: "agent-2",
+      attendanceStatus: "in_service",
+    },
+    {
+      id: "3",
+      name: "Aguardando",
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      isGroup: false,
+      assignedTo: undefined,
+      attendanceStatus: "waiting",
+    },
+    {
+      id: "4",
+      name: "Finalizada",
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      isGroup: false,
+      assignedTo: "agent-3",
+      attendanceStatus: "finished",
+    },
+    {
+      id: "5",
+      name: "Atendimento compartilhado",
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      isGroup: false,
+      assignedTo: ["agent-1", "agent-3"],
+      attendanceStatus: "in_service",
+    },
+  ];
+
+  const mine = filterChatsByAttendance(chats, "mine", "agent-1").map(chat => chat.id);
+  const inService = filterChatsByAttendance(chats, "in_service", "agent-1").map(chat => chat.id);
+  const waiting = filterChatsByAttendance(chats, "waiting", "agent-1").map(chat => chat.id);
+  const finished = filterChatsByAttendance(chats, "finished", "agent-1").map(chat => chat.id);
+  const all = filterChatsByAttendance(chats, "all", "agent-1").map(chat => chat.id);
+
+  assert.deepEqual(mine.sort(), ["1", "5"].sort());
+  assert.deepEqual(inService.sort(), ["1", "2", "5"].sort());
+  assert.deepEqual(waiting, ["3"]);
+  assert.deepEqual(finished, ["4"]);
+  assert.deepEqual(all.sort(), ["1", "2", "3", "4", "5"].sort());
 });
