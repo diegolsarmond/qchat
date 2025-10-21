@@ -16,8 +16,8 @@ const processEnv = typeof process !== 'undefined'
 
 const envSource: EnvSource = loadImportMetaEnv() ?? processEnv ?? {};
 
-const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? 'http://localhost:54321';
-const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'test-key';
+const SUPABASE_URL = 'https://gjasopawxervhxcqvyqy.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqYXNvcGF3eGVydmh4Y3F2eXF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA4MDA3MTEsImV4cCI6MjA3NjM3NjcxMX0.GRKGvXWvHu-DO4HIXoykciIYkMoLGa12qRVi6TDsAfg';
 
 const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
