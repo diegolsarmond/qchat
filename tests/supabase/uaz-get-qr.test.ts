@@ -318,3 +318,74 @@ test('handler de uaz-get-qr retorna dados quando UAZ responde com sucesso', asyn
   assert.equal(updates.length, 1);
   assert.equal(updates[0].status, 'connected');
 });
+
+test('handler de uaz-get-qr trata resposta vazia da UAZ', async () => {
+  const credentialRecord = { id: 'cred-1', user_id: 'user-123', subdomain: 'tenant', token: 'uaz-token' };
+  const updates: Array<Record<string, unknown>> = [];
+
+  const supabaseClient = {
+    auth: {
+      getUser: async () => ({ data: { user: { id: 'user-123' } }, error: null }),
+    },
+    from(table: string) {
+      if (table === 'credentials') {
+        return {
+          select() {
+            return this;
+          },
+          eq(field: string, value: string) {
+            assert.equal(field, 'id');
+            assert.equal(value, 'cred-1');
+            return {
+              single: async () => ({ data: credentialRecord, error: null }),
+            };
+          },
+          update(payload: Record<string, unknown>) {
+            updates.push(payload);
+            return {
+              eq(firstField: string, firstValue: string) {
+                if (firstField === 'id') {
+                  assert.equal(firstValue, 'cred-1');
+                }
+                return {
+                  eq(secondField: string, secondValue: string) {
+                    if (secondField === 'user_id') {
+                      assert.equal(secondValue, 'user-123');
+                    }
+                    return Promise.resolve({ data: null, error: null });
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+
+      throw new Error(`Tabela inesperada: ${table}`);
+    },
+  };
+
+  const { handler } = loadHandler({
+    supabaseClient: supabaseClient as unknown as Record<string, unknown>,
+    ensureCredentialOwnership: () => ({ credential: credentialRecord, response: undefined }),
+    fetchImpl: async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      assert.equal(request.url, 'https://tenant.uazapi.com/instance/status');
+      return new Response(null, { status: 204 });
+    },
+  });
+
+  const response = await handler(new Request('https://example.com', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer valid-token' },
+    body: JSON.stringify({ credentialId: 'cred-1' }),
+  }));
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.status, 'disconnected');
+  assert.equal(payload.connected, false);
+  assert.equal('qrCode' in payload, false);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].status, 'disconnected');
+});
