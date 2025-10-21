@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+const handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -51,6 +51,13 @@ serve(async (req) => {
 
     const { credentialId } = await req.json();
 
+    if (!credentialId) {
+      return new Response(
+        JSON.stringify({ error: 'Parâmetros inválidos' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log('[UAZ Get QR] Request for credential:', credentialId);
 
     // Fetch credential from database
@@ -70,7 +77,17 @@ serve(async (req) => {
       return ownership.response;
     }
 
-    const ownedCredential = ownership.credential;
+    const ownedCredential = ownership.credential as typeof ownership.credential & {
+      subdomain?: string;
+      token?: string;
+    };
+
+    if (!ownedCredential.subdomain || !ownedCredential.token) {
+      return new Response(
+        JSON.stringify({ error: 'Credencial sem configuração UAZ' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     console.log('[UAZ Get QR] Fetching instance info from:', ownedCredential.subdomain);
 
@@ -143,4 +160,8 @@ serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-});
+};
+
+serve(handler);
+
+export { handler };
