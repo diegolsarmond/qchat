@@ -57,6 +57,7 @@ test("botão de admin dispara navegação para /admin", () => {
       activeFilter: "all",
       onFilterChange: () => undefined,
       currentUserId: "user-admin",
+      onDisconnect: () => undefined,
     });
 
     const adminButton = findByTestId(element, "admin-nav-button");

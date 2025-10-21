@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { ChatSidebar } from "../../components/ChatSidebar";
 import { ChatArea } from "../../components/ChatArea";
-import type { Chat, Message, SendMessagePayload } from "../../types/whatsapp";
+import type { Chat, ChatFilter, Message, SendMessagePayload } from "../../types/whatsapp";
 
 const baseChat: Chat = {
   id: "chat-1",
@@ -43,17 +43,20 @@ const renderComponent = (element: React.ReactElement) =>
   renderToStaticMarkup(<MemoryRouter>{element}</MemoryRouter>);
 
 const noop = (_payload?: SendMessagePayload) => {};
+const noopChat = (_chat?: Chat) => {};
+const noopString = (_str?: string) => {};
+const noopFilter = (_filter?: ChatFilter) => {};
 
 const createSidebar = (showSidebar: boolean) => (
   <ChatSidebar
     chats={[baseChat]}
     selectedChat={baseChat}
-    onSelectChat={noop}
-    onAssignChat={noop}
+    onSelectChat={noopChat}
+    onAssignChat={noopString}
     showSidebar={showSidebar}
-    onToggleSidebar={noop}
+    onToggleSidebar={() => {}}
     activeFilter="all"
-    onFilterChange={noop}
+    onFilterChange={noopFilter}
     currentUserId="user-mobile"
     onDisconnect={() => {}}
     isDisconnecting={false}
@@ -65,13 +68,13 @@ const createChatArea = (showSidebar: boolean) => (
     chat={baseChat}
     messages={baseMessages}
     onSendMessage={noop}
-    onAssignChat={noop}
-    onLoadMoreMessages={noop}
+    onAssignChat={noopString}
+    onLoadMoreMessages={() => {}}
     hasMoreMessages={false}
     isLoadingMoreMessages={false}
     isPrependingMessages={false}
     showSidebar={showSidebar}
-    onShowSidebar={noop}
+    onShowSidebar={() => {}}
   />
 );
 
