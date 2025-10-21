@@ -163,11 +163,10 @@ export const requestAuthenticatedMedia = async ({
   credentialId: string;
   url: string;
 }) => {
-  const { data, error, response } = await supabase.functions.invoke<ArrayBuffer>(
+  const { data, error } = await supabase.functions.invoke<ArrayBuffer>(
     "uaz-download-media",
     {
       body: { credentialId, url },
-      responseType: "arraybuffer",
     }
   );
 
@@ -175,11 +174,8 @@ export const requestAuthenticatedMedia = async ({
     return null;
   }
 
-  const contentType = response?.headers.get("x-content-type") ?? null;
-  const fileName = response?.headers.get("x-file-name") ?? null;
-  const blob = new Blob([data], { type: contentType ?? undefined });
-
-  return { blob, contentType, fileName };
+  const blob = new Blob([data as any]);
+  return { blob, contentType: null, fileName: null };
 };
 
 type ResolvedMediaSource = {
@@ -302,7 +298,7 @@ const resolveAudioSource = (message: Message): AudioSource | null => {
   if (!bytes.length) {
     return null;
   }
-  const blob = new Blob([bytes], { type: inferAudioMimeType(message) });
+  const blob = new Blob([bytes as any], { type: inferAudioMimeType(message) });
   if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
     return { url: `data:${blob.type};base64,${base64}`, shouldRevoke: false };
   }
@@ -497,6 +493,7 @@ export const ChatArea = ({
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const onSendMessageRef = useRef(onSendMessage);
+  const isPrivateRef = useRef(isPrivate);
   const recorderRef = useRef<ReturnType<typeof createAudioRecorder> | null>(null);
   const messagesStartRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);

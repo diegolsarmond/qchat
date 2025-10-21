@@ -50,7 +50,7 @@ type PerformAdminUserCreationParams = {
   }>;
   fetchCounts: () => Promise<{ usersCount: number; chatsCount: number }>;
   updateStats: (nextStats: AdminStat[]) => void;
-  toast: (options: { title: string; description: string; variant?: string }) => void;
+  toast: ReturnType<typeof useToast>['toast'];
 };
 
 export const performAdminUserCreation = async ({

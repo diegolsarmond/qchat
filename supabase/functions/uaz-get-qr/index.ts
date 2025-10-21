@@ -30,14 +30,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     const supabaseClient = createClient(
       supabaseUrl,
-      serviceRoleKey,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        },
-      },
+      serviceRoleKey
     );
 
     const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
@@ -166,13 +159,15 @@ const handler = async (req: Request): Promise<Response> => {
       console.error('[UAZ Get QR] Failed to update credential:', updateError);
     }
 
+    const connected = typeof instanceData.status === 'object' && instanceData.status?.connected === true;
+
     return new Response(
       JSON.stringify({
         status: instanceData.instance?.status || 'disconnected',
         qrCode: instanceData.instance?.qrcode,
         profileName: instanceData.instance?.profileName,
         phoneNumber: instanceData.instance?.owner,
-        connected: instanceData.status?.connected || false,
+        connected,
         pairingCode: instanceData.instance?.paircode,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -13,7 +13,7 @@ type PerformRegisterParams = {
   email: string;
   password: string;
   signUp: SignUp;
-  toast: (options: { title: string; description: string; variant?: string }) => void;
+  toast: ReturnType<typeof useToast>['toast'];
   navigate: (path: string) => void;
   setLoading: (loading: boolean) => void;
 };

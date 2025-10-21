@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import {
   Chat,
+  ChatAttendanceStatus,
   ChatFilter,
   Message,
   User as WhatsAppUser,
@@ -638,8 +639,7 @@ const Index = ({ user }: IndexProps) => {
 
     try {
       if (payload.isPrivate) {
-        const { error } = await supabase.from('messages').insert({
-          id: messageId,
+        const { error } = await supabase.from('messages').insert([{
           chat_id: selectedChat.id,
           credential_id: credentialId,
           content: messageContent,
@@ -651,9 +651,9 @@ const Index = ({ user }: IndexProps) => {
           document_name: payload.documentName,
           from_me: true,
           is_private: true,
-          message_timestamp: new Date().toISOString(),
-          user_id: user.id,
-        });
+          message_timestamp: Date.now(),
+          wa_message_id: messageId,
+        }]);
 
         if (error) throw error;
       } else {
@@ -742,15 +742,14 @@ const Index = ({ user }: IndexProps) => {
       const { error } = await supabase
         .from('chats')
         .update({ assigned_to: userId })
-        .eq('id', chatToAssign)
-        .eq('user_id', user.id);
+        .eq('id', chatToAssign);
 
       if (error) throw error;
 
       setChats(prevChats =>
         prevChats.map(c =>
           c.id === chatToAssign
-            ? { ...c, assignedTo: userId, attendanceStatus: "in_service" }
+            ? { ...c, assignedTo: userId, attendanceStatus: "in_service" as ChatAttendanceStatus }
             : c
         )
       );

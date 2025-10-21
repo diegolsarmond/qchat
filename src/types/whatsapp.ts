@@ -34,9 +34,7 @@ export interface Message {
   timestamp: string;
   from: 'me' | 'them';
   status?: 'sent' | 'delivered' | 'read';
-  messageType?: 'text' | 'media' | 'interactive';
-  messageType?: 'text' | 'media' | 'contact';
-  messageType?: 'text' | 'media' | 'location';
+  messageType?: 'text' | 'media' | 'interactive' | 'contact' | 'location';
   mediaType?: string;
   caption?: string;
   documentName?: string;
@@ -93,9 +91,7 @@ export interface InteractiveMenuPayload {
 
 export interface SendMessagePayload {
   content: string;
-  messageType: 'text' | 'media' | 'interactive';
-  messageType: 'text' | 'media' | 'contact';
-  messageType: 'text' | 'media' | 'location';
+  messageType: 'text' | 'media' | 'interactive' | 'contact' | 'location';
   mediaType?: string;
   mediaUrl?: string;
   mediaBase64?: string;
