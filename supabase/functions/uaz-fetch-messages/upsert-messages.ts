@@ -1,13 +1,6 @@
 import { resolveMessageStorage } from "../message-storage.ts";
 
-type SupabaseClient = {
-  from: (table: string) => {
-    upsert: (
-      records: Array<Record<string, unknown>>,
-      options: { onConflict: string }
-    ) => Promise<{ data?: unknown; error?: unknown }>;
-  };
-};
+type SupabaseClient = any;
 
 type UpsertFetchedMessagesParams = {
   supabaseClient: SupabaseClient;

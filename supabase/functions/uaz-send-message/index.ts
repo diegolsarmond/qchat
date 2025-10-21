@@ -198,7 +198,7 @@ serve(async (req) => {
 
               return { id, title };
             })
-            .filter((button): button is { id: string; title: string } => Boolean(button))
+            .filter((button: any): button is { id: string; title: string } => Boolean(button))
           : [];
 
         if (!buttons.length) {
@@ -244,7 +244,7 @@ serve(async (req) => {
                       ...(description ? { description } : {}),
                     };
                   })
-                  .filter((row): row is { id: string; title: string; description?: string } => Boolean(row))
+                  .filter((row: any): row is { id: string; title: string; description?: string } => Boolean(row))
                 : [];
 
               if (!rows.length) {
@@ -256,7 +256,7 @@ serve(async (req) => {
                 rows,
               };
             })
-            .filter((section): section is { title?: string; rows: { id: string; title: string; description?: string }[] } => Boolean(section))
+            .filter((section: any): section is { title?: string; rows: { id: string; title: string; description?: string }[] } => Boolean(section))
           : [];
 
         if (!sections.length) {

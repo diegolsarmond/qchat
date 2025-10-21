@@ -1,9 +1,5 @@
 export interface PersistChatsParams {
-  supabaseClient: {
-    from: (table: string) => {
-      upsert: (records: unknown[], options: { onConflict: string }) => Promise<unknown>;
-    };
-  };
+  supabaseClient: any;
   credentialId: string;
   userId: string;
   chats: Array<Record<string, unknown>>;
