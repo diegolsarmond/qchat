@@ -31,8 +31,26 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
     try {
       setStatus("Verificando status da conexão...");
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        setLoading(false);
+        setStatus("Sessão expirada. Faça login novamente.");
+        toast({
+          title: "Sessão expirada",
+          description: "Faça login novamente para continuar.",
+          variant: "destructive",
+        });
+        onStatusChange?.('error');
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('uaz-get-qr', {
         body: { credentialId },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        }
       });
 
       if (error) throw error;
