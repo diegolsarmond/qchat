@@ -31,7 +31,12 @@ if (!globalSupabase.__supabaseClient__) {
       storage: authStorage,
       persistSession: true,
       autoRefreshToken: true,
-    }
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+      },
+    },
   });
 }
 
