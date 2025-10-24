@@ -15,9 +15,13 @@ const handler = async (req: Request): Promise<Response> => {
 
   try {
     const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization');
-    const accessToken = typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
+    let accessToken = typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
       ? authHeader.slice(7).trim()
       : null;
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? null;
+    if (anonKey && accessToken === anonKey) {
+      accessToken = null;
+    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
