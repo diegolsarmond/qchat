@@ -17,7 +17,6 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
   const [token, setToken] = useState("");
   const [adminToken, setAdminToken] = useState("");
   const [loading, setLoading] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
   const { toast } = useToast();
   const setupCompleteRef = useRef(onSetupComplete);
 
@@ -29,19 +28,9 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
     let active = true;
 
     const loadUserCredentials = async () => {
-      const { data, error } = await supabase.auth.getUser();
-      if (error || !data?.user) {
-        return;
-      }
-
-      if (active) {
-        setUserId(data.user.id);
-      }
-
       const { data: existing } = await supabase
         .from('credentials')
         .select('id')
-        .eq('user_id', data.user.id)
         .order('created_at', { ascending: false })
         .limit(1);
 
@@ -72,16 +61,6 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
     setLoading(true);
 
     try {
-      let currentUserId = userId;
-      if (!currentUserId) {
-        const { data, error } = await supabase.auth.getUser();
-        if (error || !data?.user) {
-          throw error || new Error('Usuário não autenticado');
-        }
-        currentUserId = data.user.id;
-        setUserId(currentUserId);
-      }
-
       // Insert credential into database
       const { data, error } = await supabase
         .from('credentials')
@@ -91,7 +70,6 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
           token: token,
           admin_token: adminToken || null,
           status: 'disconnected',
-          user_id: currentUserId,
         })
         .select()
         .single();

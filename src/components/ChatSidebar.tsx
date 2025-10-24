@@ -102,7 +102,7 @@ export const ChatSidebar = ({
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    navigate("/login");
+    navigate("/");
   };
 
   const filteredChats = filterChatsByAttendance(chats, activeFilter, currentUserId);

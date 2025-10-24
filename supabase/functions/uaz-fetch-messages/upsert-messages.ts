@@ -7,7 +7,7 @@ type UpsertFetchedMessagesParams = {
   messages: Array<Record<string, any>>;
   chatId: string;
   credentialId: string;
-  userId: string;
+  userId?: string | null;
 };
 
 export async function upsertFetchedMessages({
@@ -35,7 +35,7 @@ export async function upsertFetchedMessages({
     return {
       chat_id: chatId,
       credential_id: credentialId,
-      user_id: userId,
+      ...(userId ? { user_id: userId } : {}),
       wa_message_id: msg.messageid,
       content: storage.content,
       message_type: storage.messageType,

@@ -19,35 +19,38 @@ const handler = async (req: Request): Promise<Response> => {
       ? authHeader.slice(7).trim()
       : null;
 
-    if (!accessToken) {
-      return new Response(
-        JSON.stringify({ error: 'Credenciais ausentes' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+    const clientOptions = accessToken
+      ? {
+          global: {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        }
+      : undefined;
 
     const supabaseClient = createClient(
       supabaseUrl,
       serviceRoleKey,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        },
-      },
+      clientOptions,
     );
 
-    const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+    let userId: string | null = null;
 
-    if (authError || !authData?.user) {
-      return new Response(
-        JSON.stringify({ error: 'Credenciais inválidas' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (accessToken) {
+      const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+
+      if (authError || !authData?.user) {
+        return new Response(
+          JSON.stringify({ error: 'Credenciais inválidas' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      userId = authData.user.id;
     }
 
     const {
@@ -73,7 +76,7 @@ const handler = async (req: Request): Promise<Response> => {
       console.error('[UAZ Fetch Messages] Failed to fetch credential:', credError);
     }
 
-    const ownership = ensureCredentialOwnership(credential, authData.user.id, corsHeaders);
+    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders);
 
     if (ownership.response) {
       return ownership.response;
@@ -81,12 +84,16 @@ const handler = async (req: Request): Promise<Response> => {
     const ownedCredential = ownership.credential;
 
     // Fetch chat
-    const { data: chat, error: chatError } = await supabaseClient
+    let chatQuery = supabaseClient
       .from('chats')
       .select('wa_chat_id')
-      .eq('id', chatId)
-      .eq('user_id', authData.user.id)
-      .single();
+      .eq('id', chatId);
+
+    if (userId) {
+      chatQuery = chatQuery.eq('user_id', userId);
+    }
+
+    const { data: chat, error: chatError } = await chatQuery.single();
 
     if (chatError || !chat) {
       return new Response(
@@ -132,17 +139,22 @@ const handler = async (req: Request): Promise<Response> => {
       messages,
       chatId,
       credentialId,
-      userId: authData.user.id,
+      userId,
     });
 
     // Fetch updated messages from database with pagination
-    const { data: dbMessages, error: dbError, count } = await supabaseClient
+    let messageQuery = supabaseClient
       .from('messages')
       .select('*', { count: 'exact' })
       .eq('chat_id', chatId)
-      .eq('user_id', authData.user.id)
       .order('message_timestamp', { ascending: order !== 'desc' })
       .range(safeOffset, safeOffset + safeLimit - 1);
+
+    if (userId) {
+      messageQuery = messageQuery.eq('user_id', userId);
+    }
+
+    const { data: dbMessages, error: dbError, count } = await messageQuery;
 
     if (dbError) {
       console.error('[UAZ Fetch Messages] Failed to fetch from DB:', dbError);
