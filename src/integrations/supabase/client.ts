@@ -17,7 +17,7 @@ const processEnv = typeof process !== 'undefined'
 const envSource: EnvSource = loadImportMetaEnv() ?? processEnv ?? {};
 
 const SUPABASE_URL = 'https://supabase02.quantumtecnologia.com.br';
-const SUPABASE_PUBLISHABLE_KEY = 'eyJhbGci0iJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3Mi0iAic3VwYWJhc2UtZGVtbyIsC iAgICAiaWF0IjogMTY@MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NT M1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
+const SUPABASE_PUBLISHABLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY4MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
 const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
