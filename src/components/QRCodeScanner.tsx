@@ -220,7 +220,7 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
       }
 
       intervalRef.current = setInterval(() => {
-        fetchQRCode();
+        fetchQRCode({ subdomain: data.subdomain, token: data.token });
       }, 3000);
     };
 
