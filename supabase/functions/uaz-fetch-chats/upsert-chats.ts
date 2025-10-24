@@ -1,20 +1,19 @@
 export interface PersistChatsParams {
   supabaseClient: any;
   credentialId: string;
-  userId: string;
+  userId?: string | null;
   chats: Array<Record<string, unknown>>;
 }
 
 export function mapChatsToRecords(params: {
   chats: Array<Record<string, unknown>>;
   credentialId: string;
-  userId: string;
+  userId?: string | null;
 }) {
   const { chats, credentialId, userId } = params;
 
   return chats.map((chat) => ({
     credential_id: credentialId,
-    user_id: userId,
     wa_chat_id: chat.wa_chatid,
     name: (chat.name as string) || (chat.wa_name as string) || (chat.wa_contactName as string) || 'Unknown',
     last_message: (chat.wa_lastMessageTextVote as string) || '',
@@ -22,6 +21,7 @@ export function mapChatsToRecords(params: {
     unread_count: (chat.wa_unreadCount as number) || 0,
     avatar: (chat.image as string) || '',
     is_group: (chat.wa_isGroup as boolean) || false,
+    ...(userId ? { user_id: userId } : {}),
   }));
 }
 

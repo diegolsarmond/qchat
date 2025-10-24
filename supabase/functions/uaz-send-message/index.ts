@@ -28,39 +28,40 @@ serve(async (req) => {
       ? authHeader.slice(7).trim()
       : null;
 
-    if (!accessToken) {
-      return new Response(
-        JSON.stringify({ error: "Credenciais ausentes" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+    const clientOptions = accessToken
+      ? {
+          global: {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+          auth: { autoRefreshToken: false, persistSession: false },
+        }
+      : { auth: { autoRefreshToken: false, persistSession: false } };
 
     const supabaseClient = createClient(
       supabaseUrl,
       serviceRoleKey,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        },
-        auth: { autoRefreshToken: false, persistSession: false },
-      },
+      clientOptions,
     );
 
-    const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+    let userId: string | null = null;
 
-    if (authError || !authData?.user) {
-      return new Response(
-        JSON.stringify({ error: "Credenciais inválidas" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (accessToken) {
+      const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+
+      if (authError || !authData?.user) {
+        return new Response(
+          JSON.stringify({ error: "Credenciais inválidas" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      userId = authData.user.id;
     }
-
-    const user = authData.user;
 
     const {
       credentialId,
@@ -92,7 +93,7 @@ serve(async (req) => {
       console.error("[UAZ Send Message] Failed to fetch credential:", credError);
     }
 
-    const ownership = ensureCredentialOwnership(credential, user.id, corsHeaders);
+    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders);
 
     if (ownership.response) {
       return ownership.response;
@@ -100,19 +101,23 @@ serve(async (req) => {
 
     const ownedCredential = ownership.credential;
 
-    if (!ownedCredential || ownedCredential.user_id !== user.id) {
+    if (userId && ownedCredential.user_id && ownedCredential.user_id !== userId) {
       return new Response(
         JSON.stringify({ error: "Forbidden" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const { data: chat, error: chatError } = await supabaseClient
+    let chatQuery = supabaseClient
       .from("chats")
       .select("wa_chat_id")
-      .eq("id", chatId)
-      .eq("user_id", user.id)
-      .single();
+      .eq("id", chatId);
+
+    if (userId) {
+      chatQuery = chatQuery.eq("user_id", userId);
+    }
+
+    const { data: chat, error: chatError } = await chatQuery.single();
 
     if (chatError || !chat) {
       return new Response(
@@ -422,7 +427,7 @@ serve(async (req) => {
       .insert({
         chat_id: chatId,
         credential_id: credentialId,
-        user_id: user.id,
+        ...(userId ? { user_id: userId } : {}),
         wa_message_id: messageData.Id || `msg_${timestamp}`,
         content: storageContent,
         message_type: storageMessageType,
@@ -441,14 +446,19 @@ serve(async (req) => {
       console.error("[UAZ Send Message] Failed to save message:", insertError);
     }
 
-    await supabaseClient
+    let updateQuery = supabaseClient
       .from("chats")
       .update({
         last_message: storageContent,
         last_message_timestamp: timestamp,
       })
-      .eq("id", chatId)
-      .eq("user_id", user.id);
+      .eq("id", chatId);
+
+    if (userId) {
+      updateQuery = updateQuery.eq("user_id", userId);
+    }
+
+    await updateQuery;
 
     return new Response(
       JSON.stringify({ success: true, messageId: messageData.Id }),

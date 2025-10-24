@@ -1,6 +1,6 @@
 export type CredentialRecord = {
   id: string;
-  user_id: string;
+  user_id: string | null;
   [key: string]: unknown;
 };
 
@@ -10,7 +10,7 @@ export type GuardResult<T extends CredentialRecord> =
 
 export function ensureCredentialOwnership<T extends CredentialRecord>(
   credential: T | null,
-  userId: string,
+  userId: string | null,
   corsHeaders: Record<string, string>,
 ): GuardResult<T> {
   if (!credential) {
@@ -25,7 +25,15 @@ export function ensureCredentialOwnership<T extends CredentialRecord>(
     };
   }
 
-  if (credential.user_id !== userId) {
+  if (credential.user_id === null) {
+    return { credential };
+  }
+
+  if (userId && credential.user_id === userId) {
+    return { credential };
+  }
+
+  if (!userId) {
     return {
       response: new Response(
         JSON.stringify({ error: "Acesso não autorizado" }),
@@ -37,5 +45,13 @@ export function ensureCredentialOwnership<T extends CredentialRecord>(
     };
   }
 
-  return { credential };
+  return {
+    response: new Response(
+      JSON.stringify({ error: "Acesso não autorizado" }),
+      {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    ),
+  };
 }

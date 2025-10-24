@@ -18,28 +18,38 @@ const handler = async (req: Request): Promise<Response> => {
       ? authHeader.slice(7).trim()
       : null;
 
-    if (!accessToken) {
-      return new Response(
-        JSON.stringify({ error: 'Credenciais ausentes' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
+    const clientOptions = accessToken
+      ? {
+          global: {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        }
+      : undefined;
+
     const supabaseClient = createClient(
       supabaseUrl,
-      serviceRoleKey
+      serviceRoleKey,
+      clientOptions
     );
 
-    const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+    let userId: string | null = null;
 
-    if (authError || !authData?.user) {
-      return new Response(
-        JSON.stringify({ error: 'Credenciais inválidas' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (accessToken) {
+      const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+
+      if (authError || !authData?.user) {
+        return new Response(
+          JSON.stringify({ error: 'Credenciais inválidas' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      userId = authData.user.id;
     }
 
     const { credentialId } = await req.json();
@@ -64,7 +74,7 @@ const handler = async (req: Request): Promise<Response> => {
       console.error('[UAZ Get QR] Credential not found:', credError);
     }
 
-    const ownership = ensureCredentialOwnership(credential, authData.user.id, corsHeaders);
+    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders);
 
     if (ownership.response) {
       return ownership.response;
@@ -149,11 +159,16 @@ const handler = async (req: Request): Promise<Response> => {
       updateData.phone_number = instanceData.instance.owner;
     }
 
-    const { error: updateError } = await supabaseClient
+    let updateQuery = supabaseClient
       .from('credentials')
       .update(updateData)
-      .eq('id', credentialId)
-      .eq('user_id', authData.user.id);
+      .eq('id', credentialId);
+
+    if (userId) {
+      updateQuery = updateQuery.eq('user_id', userId);
+    }
+
+    const { error: updateError } = await updateQuery;
 
     if (updateError) {
       console.error('[UAZ Get QR] Failed to update credential:', updateError);

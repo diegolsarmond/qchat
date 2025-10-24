@@ -18,35 +18,38 @@ const handler = async (req: Request): Promise<Response> => {
       ? authHeader.slice(7).trim()
       : null;
 
-    if (!accessToken) {
-      return new Response(
-        JSON.stringify({ error: 'Credenciais ausentes' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+    const clientOptions = accessToken
+      ? {
+          global: {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          },
+        }
+      : undefined;
 
     const supabaseClient = createClient(
       supabaseUrl,
       serviceRoleKey,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        },
-      },
+      clientOptions,
     );
 
-    const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+    let userId: string | null = null;
 
-    if (authError || !authData?.user) {
-      return new Response(
-        JSON.stringify({ error: 'Credenciais inválidas' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (accessToken) {
+      const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+
+      if (authError || !authData?.user) {
+        return new Response(
+          JSON.stringify({ error: 'Credenciais inválidas' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      userId = authData.user.id;
     }
 
     const { credentialId, chatId } = await req.json();
@@ -64,7 +67,7 @@ const handler = async (req: Request): Promise<Response> => {
       console.error('[UAZ Fetch Contact Details] Failed to fetch credential:', credError);
     }
 
-    const ownership = ensureCredentialOwnership(credential, authData.user.id, corsHeaders);
+    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders);
 
     if (ownership.response) {
       return ownership.response;
@@ -72,12 +75,16 @@ const handler = async (req: Request): Promise<Response> => {
     const ownedCredential = ownership.credential;
 
     // Fetch chat to get wa_chat_id
-    const { data: chat, error: chatError } = await supabaseClient
+    let chatQuery = supabaseClient
       .from('chats')
       .select('wa_chat_id')
-      .eq('id', chatId)
-      .eq('user_id', authData.user.id)
-      .single();
+      .eq('id', chatId);
+
+    if (userId) {
+      chatQuery = chatQuery.eq('user_id', userId);
+    }
+
+    const { data: chat, error: chatError } = await chatQuery.single();
 
     if (chatError || !chat) {
       return new Response(
@@ -119,14 +126,19 @@ const handler = async (req: Request): Promise<Response> => {
     console.log('[UAZ Fetch Contact Details] Got details for:', contactDetails.name);
 
     // Update chat with contact details
-    await supabaseClient
+    let updateQuery = supabaseClient
       .from('chats')
       .update({
         name: contactDetails.name || contactDetails.wa_name || contactDetails.wa_contactName || phoneNumber,
         avatar: contactDetails.image || null,
       })
-      .eq('id', chatId)
-      .eq('user_id', authData.user.id);
+      .eq('id', chatId);
+
+    if (userId) {
+      updateQuery = updateQuery.eq('user_id', userId);
+    }
+
+    await updateQuery;
 
     return new Response(
       JSON.stringify({

@@ -6,7 +6,6 @@ import { ChatArea } from "@/components/ChatArea";
 import { AssignChatDialog } from "@/components/AssignChatDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import type { User as SupabaseUser } from "@supabase/supabase-js";
 import {
   Chat,
   ChatAttendanceStatus,
@@ -41,11 +40,7 @@ export const mapApiMessage = (m: any): Message => ({
   mediaBase64: m.media_base64,
 });
 
-type IndexProps = {
-  user: SupabaseUser;
-};
-
-const Index = ({ user }: IndexProps) => {
+const Index = () => {
   const [credentialId, setCredentialId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
@@ -111,7 +106,7 @@ const Index = ({ user }: IndexProps) => {
   useEffect(() => {
     let active = true;
 
-    if (!user?.id || credentialId) {
+    if (credentialId) {
       return () => {
         active = false;
       };
@@ -121,7 +116,6 @@ const Index = ({ user }: IndexProps) => {
       const { data, error } = await supabase
         .from('credentials')
         .select('id')
-        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(1);
 
@@ -146,7 +140,7 @@ const Index = ({ user }: IndexProps) => {
     return () => {
       active = false;
     };
-  }, [user, credentialId, toast]);
+  }, [credentialId, toast]);
 
   useEffect(() => {
     if (!selectedChat) {
@@ -182,8 +176,6 @@ const Index = ({ user }: IndexProps) => {
 
   // Fetch users on mount
   useEffect(() => {
-    if (!user) return;
-
     const fetchUsers = async () => {
       const { data } = await supabase.from('users').select('*');
       if (data) {
@@ -196,7 +188,7 @@ const Index = ({ user }: IndexProps) => {
       }
     };
     fetchUsers();
-  }, [user]);
+  }, []);
 
   // Fetch chats when connected and setup realtime
   useEffect(() => {
@@ -212,7 +204,7 @@ const Index = ({ user }: IndexProps) => {
             event: '*',
             schema: 'public',
             table: 'chats',
-            filter: `credential_id=eq.${credentialId},user_id=eq.${user.id}`
+            filter: `credential_id=eq.${credentialId}`
           },
           (payload) => {
             console.log('Chat change:', payload);
@@ -297,7 +289,7 @@ const Index = ({ user }: IndexProps) => {
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
-            filter: `credential_id=eq.${credentialId},user_id=eq.${user.id}`
+            filter: `credential_id=eq.${credentialId}`
           },
           handleMessageChange
         )
@@ -385,7 +377,7 @@ const Index = ({ user }: IndexProps) => {
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('uaz-fetch-chats', {
-        body: { credentialId, userId: user.id }
+        body: { credentialId }
       });
 
       if (error) throw error;
@@ -444,7 +436,6 @@ const Index = ({ user }: IndexProps) => {
           limit: MESSAGE_PAGE_SIZE,
           offset: options.reset ? 0 : messagePagination.offset,
           order: 'desc',
-          userId: user.id,
         }
       });
 
@@ -593,7 +584,7 @@ const Index = ({ user }: IndexProps) => {
     if (credentialId) {
       try {
         const { data } = await supabase.functions.invoke('uaz-fetch-contact-details', {
-          body: { credentialId, chatId: chat.id, userId: user.id }
+          body: { credentialId, chatId: chat.id }
         });
         
         if (data) {
@@ -674,7 +665,6 @@ const Index = ({ user }: IndexProps) => {
             latitude: payload.latitude,
             longitude: payload.longitude,
             locationName: payload.locationName,
-            userId: user.id,
           }
         });
 
@@ -818,7 +808,6 @@ const Index = ({ user }: IndexProps) => {
           onToggleSidebar={() => setShowSidebar(false)}
           activeFilter={chatFilter}
           onFilterChange={setChatFilter}
-          currentUserId={user.id}
           onDisconnect={handleDisconnect}
           isDisconnecting={isDisconnecting}
           profileName={credentialProfile.profileName}
