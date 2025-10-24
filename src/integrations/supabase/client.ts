@@ -35,6 +35,7 @@ if (!globalSupabase.__supabaseClient__) {
     global: {
       headers: {
         Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+        apikey: SUPABASE_PUBLISHABLE_KEY,
       },
     },
   });
