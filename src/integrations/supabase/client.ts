@@ -34,11 +34,25 @@ if (!globalSupabase.__supabaseClient__) {
     },
     global: {
       headers: {
-        Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
         apikey: SUPABASE_PUBLISHABLE_KEY,
       },
     },
   });
 }
 
-export const supabase = globalSupabase.__supabaseClient__;
+const supabaseInstance = globalSupabase.__supabaseClient__;
+
+const originalInvoke = supabaseInstance.functions.invoke.bind(supabaseInstance.functions);
+
+supabaseInstance.functions.invoke = (async (functionName, options) => {
+  const { data } = await supabaseInstance.auth.getSession();
+  const accessToken = data?.session?.access_token;
+
+  const headers = accessToken
+    ? { ...options?.headers, Authorization: `Bearer ${accessToken}` }
+    : options?.headers;
+
+  return originalInvoke(functionName, { ...options, headers });
+}) as typeof supabaseInstance.functions.invoke;
+
+export const supabase = supabaseInstance;
