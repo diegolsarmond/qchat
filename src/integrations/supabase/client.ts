@@ -49,10 +49,13 @@ supabaseInstance.functions.invoke = (async (functionName, options) => {
   const accessToken = data?.session?.access_token;
 
   const headers = accessToken
-    ? { ...options?.headers, Authorization: `Bearer ${accessToken}` }
+    ? { ...(options?.headers ?? {}), Authorization: `Bearer ${accessToken}` }
     : options?.headers;
 
-  return originalInvoke(functionName, { ...options, headers });
+  return originalInvoke(functionName, {
+    ...(options ?? {}),
+    ...(headers ? { headers } : {}),
+  });
 }) as typeof supabaseInstance.functions.invoke;
 
 export const supabase = supabaseInstance;
