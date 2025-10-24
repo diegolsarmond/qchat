@@ -16,8 +16,8 @@ const processEnv = typeof process !== 'undefined'
 
 const envSource: EnvSource = loadImportMetaEnv() ?? processEnv ?? {};
 
-const SUPABASE_URL = 'https://supabase02.quantumtecnologia.com.br';
-const SUPABASE_PUBLISHABLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
+const SUPABASE_URL = envSource['VITE_SUPABASE_URL'] ?? 'http://localhost:54321';
+const SUPABASE_PUBLISHABLE_KEY = envSource['VITE_SUPABASE_PUBLISHABLE_KEY'] ?? 'public-anon-key';
 
 const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
@@ -42,17 +42,21 @@ if (!globalSupabase.__supabaseClient__) {
 
 const supabaseInstance = globalSupabase.__supabaseClient__;
 
-const originalInvoke = supabaseInstance.functions.invoke.bind(supabaseInstance.functions);
+const functionsClient = supabaseInstance.functions;
 
-supabaseInstance.functions.invoke = (async (functionName, options) => {
-  const { data } = await supabaseInstance.auth.getSession();
-  const accessToken = data?.session?.access_token;
+if (functionsClient?.invoke) {
+  const originalInvoke = functionsClient.invoke.bind(functionsClient);
 
-  const headers = accessToken
-    ? { ...options?.headers, Authorization: `Bearer ${accessToken}` }
-    : options?.headers;
+  functionsClient.invoke = (async (functionName, options) => {
+    const { data } = await supabaseInstance.auth.getSession();
+    const accessToken = data?.session?.access_token;
 
-  return originalInvoke(functionName, { ...options, headers });
-}) as typeof supabaseInstance.functions.invoke;
+    const headers = accessToken
+      ? { ...options?.headers, Authorization: `Bearer ${accessToken}` }
+      : options?.headers;
+
+    return originalInvoke(functionName, { ...options, headers });
+  }) as typeof functionsClient.invoke;
+}
 
 export const supabase = supabaseInstance;
