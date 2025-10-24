@@ -18,18 +18,23 @@ const handler = async (req: Request): Promise<Response> => {
       ? authHeader.slice(7).trim()
       : null;
 
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({ error: 'Credenciais ausentes' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
-    const clientOptions = accessToken
-      ? {
-          global: {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          },
-        }
-      : undefined;
+    const clientOptions = {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    };
 
     const supabaseClient = createClient(
       supabaseUrl,
@@ -39,18 +44,16 @@ const handler = async (req: Request): Promise<Response> => {
 
     let userId: string | null = null;
 
-    if (accessToken) {
-      const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
+    const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
 
-      if (authError || !authData?.user) {
-        return new Response(
-          JSON.stringify({ error: 'Credenciais inválidas' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      userId = authData.user.id;
+    if (authError || !authData?.user) {
+      return new Response(
+        JSON.stringify({ error: 'Credenciais inválidas' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    userId = authData.user.id;
 
     const { credentialId } = await req.json();
 
