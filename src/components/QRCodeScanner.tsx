@@ -16,6 +16,7 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string>("Conectando ao WhatsApp...");
   const [instanceName, setInstanceName] = useState<string>("");
+  const [pairingCode, setPairingCode] = useState<string>("");
   const { toast } = useToast();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFetchingRef = useRef(false);
@@ -46,6 +47,7 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
       // Se já está conectado, redireciona imediatamente
       if (data?.connected || data?.status === 'connected') {
         setStatus("Já conectado!");
+        setPairingCode("");
         setLoading(false);
         toast({
           title: "Conectado",
@@ -60,6 +62,16 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
       }
 
       // Se está no processo de conexão e tem QR code
+      if (data?.pairingCode) {
+        setPairingCode(data.pairingCode);
+        setQrCode(null);
+        setLoading(false);
+        setStatus("Digite o código de pareamento no WhatsApp");
+        return;
+      }
+
+      setPairingCode("");
+
       if (data?.qrCode) {
         setQrCode(data?.qrCode ?? null);
         setLoading(false);
@@ -69,6 +81,8 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
 
       // Se está aguardando QR code
       if (data?.status === 'connecting' || data?.status === 'disconnected') {
+        setQrCode(null);
+        setPairingCode("");
         setLoading(true);
         setStatus("Gerando QR Code...");
         return;
@@ -77,7 +91,7 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
       // Caso não identificado
       setLoading(false);
       setStatus("Status desconhecido. Tente novamente.");
-      
+
     } catch (error) {
       console.error('Error fetching connection status:', error);
       setLoading(false);
@@ -167,6 +181,17 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
                   <li>Toque em Conectar aparelho</li>
                   <li>Aponte seu celular para esta tela</li>
                 </ol>
+              </div>
+            )}
+
+            {!loading && pairingCode && (
+              <div className="space-y-3 w-full text-center">
+                <div className="text-3xl font-semibold tracking-widest text-primary">
+                  {pairingCode.split("").join(" ")}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Digite este código no seu WhatsApp para concluir a conexão
+                </p>
               </div>
             )}
           </div>
