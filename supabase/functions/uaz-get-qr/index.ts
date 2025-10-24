@@ -55,7 +55,20 @@ const handler = async (req: Request): Promise<Response> => {
 
     userId = authData.user.id;
 
-    const { credentialId } = await req.json();
+    const bodyText = await req.text();
+    let credentialId: string | undefined;
+
+    if (bodyText) {
+      try {
+        const payload = JSON.parse(bodyText) as { credentialId?: string };
+        credentialId = payload.credentialId;
+      } catch {
+        return new Response(
+          JSON.stringify({ error: 'Parâmetros inválidos' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     if (!credentialId) {
       return new Response(
