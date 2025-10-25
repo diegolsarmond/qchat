@@ -298,39 +298,10 @@ const Index = () => {
           {
             event: 'UPDATE',
             schema: 'public',
-            table: 'messages'
+            table: 'messages',
+            filter: `credential_id=eq.${credentialId}`
           },
-          (payload) => {
-            console.log('New message:', payload);
-            const mappedMessage = mapApiMessage(payload.new as any);
-            const previewContent = mappedMessage.messageType === 'media'
-              ? mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`
-              : mappedMessage.content;
-
-            setChats(prevChats => prevChats.map(chat =>
-              chat.id === mappedMessage.chatId
-                ? { ...chat, lastMessage: previewContent, timestamp: mappedMessage.timestamp }
-                : chat
-            ));
-
-            if (selectedChat && payload.new.chat_id === selectedChat.id) {
-              let appended = false;
-              setMessages(prev => {
-                if (prev.some(message => message.id === mappedMessage.id)) {
-                  return prev;
-                }
-                appended = true;
-                return [...prev, mappedMessage];
-              });
-
-              if (appended) {
-                setMessagePagination(prev => ({
-                  ...prev,
-                  offset: prev.offset + 1,
-                }));
-              }
-            }
-          }
+          handleMessageChange
         )
         .subscribe();
 
