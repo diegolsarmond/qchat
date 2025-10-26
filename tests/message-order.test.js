@@ -51,6 +51,22 @@ test("normalizeFetchedMessages reverte lista descendente sem mutar original", ()
   notStrictEqual(normalized, fetched);
 });
 
+test("normalizeFetchedMessages mantém lista crescente", () => {
+  const fetched = [
+    { id: "1", timestamp: "2024-01-01T10:00:00.000Z" },
+    { id: "2", timestamp: "2024-01-01T10:01:00.000Z" },
+    { id: "3", timestamp: "2024-01-01T10:02:00.000Z" },
+  ];
+
+  const normalized = normalizeFetchedMessages(fetched);
+
+  strictEqual(
+    JSON.stringify(normalized.map(message => message.id)),
+    JSON.stringify(["1", "2", "3"]),
+  );
+  notStrictEqual(normalized, fetched);
+});
+
 test("normalizeFetchedMessages devolve cópia com ordem cronológica", () => {
   const fetched = [
     { id: "3" },
