@@ -57,13 +57,46 @@ export const performRegister = async ({
   setLoading(true);
 
   try {
-    const { error } = await signUp({
+    const { data, error } = await signUp({
       email,
       password,
     });
 
     if (error) {
       const message = resolveErrorMessage(error);
+      toast({
+        title: "Erro ao cadastrar",
+        description: message,
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    const userId = data?.user?.id;
+    const userEmail = data?.user?.email;
+
+    if (!userId || !userEmail) {
+      toast({
+        title: "Erro ao cadastrar",
+        description: "Erro inesperado",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    const derivedName =
+      (data?.user?.user_metadata as { name?: string } | undefined)?.name ??
+      userEmail.split("@")[0];
+
+    const { error: upsertError } = await supabase
+      .from("users")
+      .upsert(
+        { id: userId, email: userEmail, name: derivedName },
+        { onConflict: "id" },
+      );
+
+    if (upsertError) {
+      const message = resolveErrorMessage(upsertError);
       toast({
         title: "Erro ao cadastrar",
         description: message,
