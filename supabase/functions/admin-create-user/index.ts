@@ -9,6 +9,7 @@ const corsHeaders = {
 type AdminCreateUserPayload = {
   email?: unknown;
   password?: unknown;
+  name?: unknown;
 };
 
 serve(async (req) => {
@@ -39,6 +40,7 @@ serve(async (req) => {
     const payload = (await req.json()) as AdminCreateUserPayload;
     const email = typeof payload.email === "string" ? payload.email : null;
     const password = typeof payload.password === "string" ? payload.password : null;
+    const nameInput = typeof payload.name === "string" ? payload.name.trim() : "";
 
     if (!email || !password) {
       return new Response(
@@ -140,10 +142,44 @@ serve(async (req) => {
           console.error("[Admin Create User] Failed to add user to credential members", upsertError.message);
         }
       }
+    const userId = data.user?.id ?? null;
+
+    if (!userId) {
+      console.error("[Admin Create User] Missing user ID from auth response");
+      return new Response(
+        JSON.stringify({ error: "Falha ao recuperar identificador do usuário" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const fallbackName = (() => {
+      const localPart = email.split("@")[0]?.trim() ?? "";
+      return localPart || "Agente";
+    })();
+    const finalName = nameInput || fallbackName;
+
+    const { error: upsertError } = await supabaseClient.from("users").upsert({
+      id: userId,
+      email,
+      name: finalName,
+    });
+
+    if (upsertError) {
+      console.error("[Admin Create User] Failed to upsert user", upsertError.message);
+      return new Response(
+        JSON.stringify({ error: upsertError.message }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     return new Response(
-      JSON.stringify({ success: true, userId: data.user?.id ?? null }),
+      JSON.stringify({ success: true, userId }),
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

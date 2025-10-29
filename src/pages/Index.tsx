@@ -313,30 +313,20 @@ const Index = () => {
   }, [isConnected, credentialId, selectedChat]);
 
   const deriveAttendanceStatus = (chat: any): Chat["attendanceStatus"] => {
-    const raw =
-      (chat.status || chat.attendance_status || chat.attendanceStatus || "")
-        .toString()
-        .toLowerCase();
+    const source = typeof chat.attendance_status === "string"
+      ? chat.attendance_status
+      : typeof chat.attendanceStatus === "string"
+        ? chat.attendanceStatus
+        : "";
 
-    if (raw === "finished" || raw === "finalized" || raw === "closed") {
+    const normalized = source.toLowerCase();
+
+    if (normalized === "in_service") {
+      return "in_service";
+    }
+
+    if (normalized === "finished") {
       return "finished";
-    }
-
-    if (
-      raw === "in_service" ||
-      raw === "in progress" ||
-      raw === "in_progress" ||
-      raw === "active"
-    ) {
-      return "in_service";
-    }
-
-    if (raw === "waiting" || raw === "pending" || raw === "queued") {
-      return "waiting";
-    }
-
-    if (chat.assigned_to || chat.assignedTo) {
-      return "in_service";
     }
 
     return "waiting";
@@ -704,7 +694,7 @@ const Index = () => {
     try {
       const { error } = await supabase
         .from('chats')
-        .update({ assigned_to: userId })
+        .update({ assigned_to: userId, attendance_status: 'in_service' })
         .eq('id', chatToAssign);
 
       if (error) throw error;
@@ -766,6 +756,43 @@ const Index = () => {
     }
   };
 
+  const handleFinishAttendance = async (chatId: string) => {
+    try {
+      const { error } = await supabase
+        .from('chats')
+        .update({ attendance_status: 'finished', assigned_to: null })
+        .eq('id', chatId);
+
+      if (error) throw error;
+
+      setChats(prevChats =>
+        prevChats.map(chat =>
+          chat.id === chatId
+            ? { ...chat, attendanceStatus: 'finished', assignedTo: undefined }
+            : chat
+        )
+      );
+
+      setSelectedChat(prevSelected =>
+        prevSelected && prevSelected.id === chatId
+          ? { ...prevSelected, attendanceStatus: 'finished', assignedTo: undefined }
+          : prevSelected
+      );
+
+      toast({
+        title: "Finalizado",
+        description: "Atendimento finalizado com sucesso",
+      });
+    } catch (error) {
+      console.error('Error finishing attendance:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao finalizar atendimento",
+        variant: "destructive",
+      });
+    }
+  };
+
   const currentChatMessages = useMemo(() => {
     if (!selectedChat) {
       return [];
@@ -818,6 +845,7 @@ const Index = () => {
           messages={currentChatMessages}
           onSendMessage={handleSendMessage}
           onAssignChat={handleAssignChat}
+          onFinishAttendance={handleFinishAttendance}
           onLoadMoreMessages={handleLoadMoreMessages}
           hasMoreMessages={messagePagination.hasMore}
           isLoadingMoreMessages={isLoadingMoreMessages}

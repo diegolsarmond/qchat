@@ -145,13 +145,18 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { data: dbChats, error: dbError, count } = await chatsQuery;
 
+    const normalizedChats = (dbChats || []).map((chat) => ({
+      ...chat,
+      attendance_status: chat.attendance_status ?? 'waiting',
+    }));
+
     if (dbError) {
       console.error('[UAZ Fetch Chats] Failed to fetch from DB:', dbError);
     }
 
     return new Response(
       JSON.stringify({
-        chats: dbChats || [],
+        chats: normalizedChats,
         total: count || 0,
         hasMore: (count || 0) > (offset + limit)
       }),
