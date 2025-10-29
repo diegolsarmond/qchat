@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { CredentialSetup } from "@/components/CredentialSetup";
 import { QRCodeScanner } from "@/components/QRCodeScanner";
 import { ChatSidebar } from "@/components/ChatSidebar";
@@ -65,6 +65,14 @@ const Index = () => {
     phoneNumber: null as string | null,
   });
   const { toast } = useToast();
+  const connectionCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearConnectionInterval = useCallback(() => {
+    if (connectionCheckIntervalRef.current) {
+      clearInterval(connectionCheckIntervalRef.current);
+      connectionCheckIntervalRef.current = null;
+    }
+  }, []);
 
   const fetchCredentialProfile = useCallback(
     async (id: string) => {
@@ -96,6 +104,33 @@ const Index = () => {
   const clearCredentialProfile = useCallback(() => {
     setCredentialProfile({ profileName: null, phoneNumber: null });
   }, []);
+
+  const clearConnectionState = useCallback(() => {
+    setIsConnected(false);
+    setSelectedChat(null);
+    setChats([]);
+    setMessages([]);
+    setAssignDialogOpen(false);
+    setChatToAssign(null);
+    setMessagePagination(createInitialMessagePagination(MESSAGE_PAGE_SIZE));
+    setShowSidebar(true);
+    setIsLoadingMoreMessages(false);
+    setIsPrependingMessages(false);
+    clearCredentialProfile();
+
+    if (typeof window !== "undefined") {
+      window.localStorage?.removeItem("activeCredentialId");
+    }
+  }, [clearCredentialProfile]);
+
+  const handleConnectionLost = useCallback(() => {
+    clearConnectionInterval();
+    clearConnectionState();
+    toast({
+      title: "Desconectado",
+      description: "Conexão perdida. Escaneie o QR code novamente.",
+    });
+  }, [clearConnectionInterval, clearConnectionState, toast]);
 
   const usersById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -581,6 +616,7 @@ const Index = () => {
     }
 
     setIsDisconnecting(true);
+    clearConnectionInterval();
 
     try {
       const { error } = await supabase.functions.invoke('uaz-disconnect-instance', {
@@ -591,20 +627,7 @@ const Index = () => {
         throw error;
       }
 
-      setIsConnected(false);
-      setSelectedChat(null);
-      setChats([]);
-      setMessages([]);
-      setAssignDialogOpen(false);
-      setChatToAssign(null);
-      setMessagePagination(createInitialMessagePagination(MESSAGE_PAGE_SIZE));
-      setShowSidebar(true);
-      setIsLoadingMoreMessages(false);
-      setIsPrependingMessages(false);
-
-      if (typeof window !== 'undefined') {
-        window.localStorage?.removeItem("activeCredentialId");
-      }
+      clearConnectionState();
 
       toast({
         title: "Desconectado",
@@ -646,6 +669,37 @@ const Index = () => {
       fetchCredentialProfile(credentialId);
     }
   }, [isConnected, credentialId, fetchCredentialProfile]);
+
+  useEffect(() => {
+    if (!credentialId || !isConnected) {
+      return;
+    }
+
+    const checkConnection = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('uaz-get-qr', {
+          body: { credentialId },
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        if (data?.connected === false || data?.status !== 'connected') {
+          handleConnectionLost();
+        }
+      } catch (error) {
+        console.error('Error checking connection status:', error);
+      }
+    };
+
+    checkConnection();
+    connectionCheckIntervalRef.current = setInterval(checkConnection, 60000);
+
+    return () => {
+      clearConnectionInterval();
+    };
+  }, [credentialId, isConnected, handleConnectionLost, clearConnectionInterval]);
 
   const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
