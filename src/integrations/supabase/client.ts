@@ -24,6 +24,7 @@ const loadBundlerEnv = (): EnvSource | undefined => {
   }
 
   return undefined;
+};
 const loadImportMetaEnv = (): EnvSource | undefined => {
   return typeof import.meta !== 'undefined'
     ? ((import.meta as ImportMeta & { env?: EnvSource })?.env ?? undefined)
