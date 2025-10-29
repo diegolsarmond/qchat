@@ -116,6 +116,7 @@ const handler = async (req: Request): Promise<Response> => {
       await persistChats({
         supabaseClient,
         credentialId,
+        userId: userId ?? undefined,
         chats,
       });
     } catch (upsertError) {
