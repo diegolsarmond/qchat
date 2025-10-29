@@ -25,6 +25,14 @@ export interface Chat {
   assignedTo?: string | string[];
   assignedUserNames?: string[];
   attendanceStatus: ChatAttendanceStatus;
+  labels?: Label[];
+}
+
+export interface Label {
+  id: string;
+  name: string;
+  color: string;
+  credentialId?: string;
 }
 
 export interface Message {
