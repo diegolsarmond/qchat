@@ -11,6 +11,15 @@ JOIN public.chats AS ch ON ch.id = cl.chat_id
 WHERE cl.label_id = l.id
   AND l.user_id IS NULL;
 
+-- Remove orphaned labels that are no longer connected to a chat
+DELETE FROM public.labels AS l
+WHERE l.user_id IS NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.chat_labels AS cl
+    WHERE cl.label_id = l.id
+  );
+
 ALTER TABLE public.labels
   ADD CONSTRAINT labels_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id);
 
