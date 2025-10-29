@@ -1,6 +1,3 @@
-DROP FUNCTION IF EXISTS public.chat_user_id_change_allowed(public.chats);
-DROP FUNCTION IF EXISTS public.message_user_id_change_allowed(public.messages);
-
 DROP POLICY IF EXISTS "Chats are viewable by everyone" ON public.chats;
 DROP POLICY IF EXISTS "Chats can be created by anyone" ON public.chats;
 DROP POLICY IF EXISTS "Chats can be updated by anyone" ON public.chats;
@@ -12,6 +9,9 @@ DROP POLICY IF EXISTS "Service or owners can create chats" ON public.chats;
 DROP POLICY IF EXISTS "Users with access can view messages" ON public.messages;
 DROP POLICY IF EXISTS "Users with access can update messages" ON public.messages;
 DROP POLICY IF EXISTS "Service or owners can create messages" ON public.messages;
+
+DROP FUNCTION IF EXISTS public.chat_user_id_change_allowed(public.chats);
+DROP FUNCTION IF EXISTS public.message_user_id_change_allowed(public.messages);
 
 CREATE OR REPLACE FUNCTION public.chat_user_id_change_allowed(new_chat public.chats)
 RETURNS boolean
