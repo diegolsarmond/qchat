@@ -450,6 +450,7 @@ interface ChatAreaProps {
   messages: Message[];
   onSendMessage: (payload: SendMessagePayload) => void;
   onAssignChat: (chatId: string) => void;
+  onFinishAttendance: (chatId: string) => void;
   onLoadMoreMessages?: () => void;
   hasMoreMessages?: boolean;
   isLoadingMoreMessages?: boolean;
@@ -464,6 +465,7 @@ export const ChatArea = ({
   messages,
   onSendMessage,
   onAssignChat,
+  onFinishAttendance,
   onLoadMoreMessages,
   hasMoreMessages = false,
   isLoadingMoreMessages = false,
@@ -1177,7 +1179,12 @@ export const ChatArea = ({
                 <MoreVertical className="w-5 h-5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end">
+              {chat.attendanceStatus !== "finished" && (
+                <DropdownMenuItem onClick={() => onFinishAttendance(chat.id)}>
+                  Finalizar atendimento
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => onAssignChat(chat.id)}>
                 Atribuir conversa
               </DropdownMenuItem>
