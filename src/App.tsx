@@ -7,6 +7,7 @@ import { ReactElement, useEffect, useState } from "react";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Admin from "./pages/Admin";
+import Login from "./pages/Login";
 import Register from "./pages/Register";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -67,6 +68,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/admin" element={<Admin />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/" element={<ProtectedRoute element={<Index />} />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
