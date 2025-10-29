@@ -305,9 +305,9 @@ test('handler de uaz-fetch-messages processa token válido e upserta mensagens',
       }
 
       if (table === 'chats') {
-        return {
+        const query = {
           select() {
-            return this;
+            return query;
           },
           eq(field: string, value: string) {
             if (field === 'id') {
@@ -326,6 +326,8 @@ test('handler de uaz-fetch-messages processa token válido e upserta mensagens',
           },
           single: async () => ({ data: chatRecord, error: null }),
         };
+
+        return query;
       }
 
       if (table === 'messages') {

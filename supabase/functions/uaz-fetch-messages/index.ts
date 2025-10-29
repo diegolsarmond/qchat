@@ -111,6 +111,7 @@ const handler = async (req: Request): Promise<Response> => {
       .from('chats')
       .select('wa_chat_id')
       .eq('id', chatId)
+      .eq('credential_id', credentialId)
       .single();
 
     if (chatError || !chat) {
