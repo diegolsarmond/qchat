@@ -4,6 +4,26 @@ import type { Database } from './types';
 
 type EnvSource = Record<string, string | undefined>;
 
+declare const __SUPABASE_ENV__:
+  | (EnvSource & {
+      VITE_SUPABASE_URL?: string;
+      VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+    })
+  | undefined;
+
+const loadBundlerEnv = (): EnvSource | undefined => {
+  if (typeof __SUPABASE_ENV__ !== 'undefined' && __SUPABASE_ENV__ !== null) {
+    return __SUPABASE_ENV__;
+  }
+
+  if (typeof globalThis !== 'undefined' && '__SUPABASE_ENV__' in globalThis) {
+    const globalEnv = (globalThis as typeof globalThis & { __SUPABASE_ENV__?: EnvSource }).__SUPABASE_ENV__;
+    if (globalEnv) {
+      return globalEnv;
+    }
+  }
+
+  return undefined;
 const loadImportMetaEnv = (): EnvSource | undefined => {
   return typeof import.meta !== 'undefined'
     ? ((import.meta as ImportMeta & { env?: EnvSource })?.env ?? undefined)
@@ -14,7 +34,7 @@ const processEnv = typeof process !== 'undefined'
   ? ((process.env ?? {}) as EnvSource)
   : undefined;
 
-const envSource: EnvSource = loadImportMetaEnv() ?? processEnv ?? {};
+const envSource: EnvSource = loadBundlerEnv() ?? processEnv ?? {};
 
 const SUPABASE_URL = 'https://supabase02.quantumtecnologia.com.br';
 const SUPABASE_PUBLISHABLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
