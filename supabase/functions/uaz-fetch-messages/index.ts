@@ -23,6 +23,13 @@ const handler = async (req: Request): Promise<Response> => {
       accessToken = null;
     }
 
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({ error: 'Credenciais ausentes' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
@@ -88,16 +95,11 @@ const handler = async (req: Request): Promise<Response> => {
     const ownedCredential = ownership.credential;
 
     // Fetch chat
-    let chatQuery = supabaseClient
+    const { data: chat, error: chatError } = await supabaseClient
       .from('chats')
       .select('wa_chat_id')
-      .eq('id', chatId);
-
-    if (userId) {
-      chatQuery = chatQuery.eq('user_id', userId);
-    }
-
-    const { data: chat, error: chatError } = await chatQuery.single();
+      .eq('id', chatId)
+      .single();
 
     if (chatError || !chat) {
       return new Response(
@@ -143,22 +145,15 @@ const handler = async (req: Request): Promise<Response> => {
       messages,
       chatId,
       credentialId,
-      userId,
     });
 
     // Fetch updated messages from database with pagination
-    let messageQuery = supabaseClient
+    const { data: dbMessages, error: dbError, count } = await supabaseClient
       .from('messages')
       .select('*', { count: 'exact' })
       .eq('chat_id', chatId)
       .order('message_timestamp', { ascending: order !== 'desc' })
       .range(safeOffset, safeOffset + safeLimit - 1);
-
-    if (userId) {
-      messageQuery = messageQuery.eq('user_id', userId);
-    }
-
-    const { data: dbMessages, error: dbError, count } = await messageQuery;
 
     if (dbError) {
       console.error('[UAZ Fetch Messages] Failed to fetch from DB:', dbError);
