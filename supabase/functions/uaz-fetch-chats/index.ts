@@ -158,7 +158,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     let chatsQuery = supabaseClient
       .from('chats')
-      .select('*', { count: 'exact' })
+      .select('*, chat_labels(label:labels(id,name,color))', { count: 'exact' })
       .eq('credential_id', credentialId)
       .order('last_message_timestamp', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -169,10 +169,32 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { data: dbChats, error: dbError, count } = await chatsQuery;
 
-    const normalizedChats = (dbChats || []).map((chat) => ({
-      ...chat,
-      attendance_status: chat.attendance_status ?? 'waiting',
-    }));
+    const normalizedChats = (dbChats || []).map((chat) => {
+      const chatLabels = Array.isArray((chat as { chat_labels?: unknown }).chat_labels)
+        ? (chat as { chat_labels: Array<{ label?: { id?: unknown; name?: unknown; color?: unknown } | null }> }).chat_labels
+        : [];
+
+      const labels = chatLabels
+        .map((item) => {
+          const label = item?.label;
+          const id = typeof label?.id === 'string' ? label.id : null;
+          if (!id) {
+            return null;
+          }
+          const name = typeof label?.name === 'string' ? label.name : '';
+          const color = typeof label?.color === 'string' ? label.color : null;
+          return { id, name, color };
+        })
+        .filter((value): value is { id: string; name: string; color: string | null } => Boolean(value));
+
+      const { chat_labels, ...rest } = chat as { chat_labels?: unknown } & Record<string, unknown>;
+
+      return {
+        ...rest,
+        attendance_status: (rest.attendance_status as string | null | undefined) ?? 'waiting',
+        labels,
+      };
+    });
 
     if (dbError) {
       console.error('[UAZ Fetch Chats] Failed to fetch from DB:', dbError);
