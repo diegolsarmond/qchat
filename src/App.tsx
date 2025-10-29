@@ -7,6 +7,7 @@ import { ReactElement } from "react";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Admin from "./pages/Admin";
+import Register from "./pages/Register";
 
 type ProtectedRouteProps = {
   element: ReactElement;
@@ -26,6 +27,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/admin" element={<Admin />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/" element={<ProtectedRoute element={<Index />} />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
