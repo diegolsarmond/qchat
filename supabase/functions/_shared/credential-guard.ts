@@ -8,10 +8,15 @@ export type GuardResult<T extends CredentialRecord> =
   | { response: Response; credential?: undefined }
   | { response?: undefined; credential: T };
 
+type GuardOptions = {
+  isMember?: boolean;
+};
+
 export function ensureCredentialOwnership<T extends CredentialRecord>(
   credential: T | null,
   userId: string | null,
   corsHeaders: Record<string, string>,
+  options: GuardOptions = {},
 ): GuardResult<T> {
   if (!credential) {
     return {
@@ -30,6 +35,10 @@ export function ensureCredentialOwnership<T extends CredentialRecord>(
   }
 
   if (userId && credential.user_id === userId) {
+    return { credential };
+  }
+
+  if (options.isMember) {
     return { credential };
   }
 

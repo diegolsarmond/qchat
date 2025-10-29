@@ -61,6 +61,19 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
     setLoading(true);
 
     try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !authData?.user?.id) {
+        toast({
+          title: "Erro",
+          description: "Não foi possível identificar o usuário autenticado",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const userId = authData.user.id;
+
       // Insert credential into database
       const { data, error } = await supabase
         .from('credentials')
@@ -70,11 +83,24 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
           token: token,
           admin_token: adminToken || null,
           status: 'disconnected',
+          user_id: userId,
         })
         .select()
         .single();
 
       if (error) throw error;
+
+      const { error: membershipError } = await supabase
+        .from('credential_members')
+        .upsert({
+          credential_id: data.id,
+          user_id: userId,
+          role: 'owner',
+        }, { onConflict: 'credential_id,user_id' });
+
+      if (membershipError) {
+        console.error('Error adding credential owner membership:', membershipError);
+      }
 
       toast({
         title: "Sucesso",

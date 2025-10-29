@@ -94,7 +94,20 @@ const handler = async (req: Request): Promise<Response> => {
       console.error('[UAZ Get QR] Credential not found:', credError);
     }
 
-    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders);
+    let isMember = false;
+
+    if (credential && userId) {
+      const { data: membership } = await supabaseClient
+        .from('credential_members')
+        .select('user_id')
+        .eq('credential_id', credentialId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      isMember = Boolean(membership);
+    }
+
+    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders, { isMember });
 
     if (ownership.response) {
       return ownership.response;

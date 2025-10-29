@@ -72,7 +72,20 @@ const handler = async (req: Request): Promise<Response> => {
       console.error('[UAZ Fetch Chats] Failed to fetch credential:', credError);
     }
 
-    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders);
+    let isMember = false;
+
+    if (credential && userId) {
+      const { data: membership } = await supabaseClient
+        .from('credential_members')
+        .select('user_id')
+        .eq('credential_id', credentialId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      isMember = Boolean(membership);
+    }
+
+    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders, { isMember });
 
     if (ownership.response) {
       return ownership.response;
@@ -137,13 +150,18 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { data: dbChats, error: dbError, count } = await chatsQuery;
 
+    const normalizedChats = (dbChats || []).map((chat) => ({
+      ...chat,
+      attendance_status: chat.attendance_status ?? 'waiting',
+    }));
+
     if (dbError) {
       console.error('[UAZ Fetch Chats] Failed to fetch from DB:', dbError);
     }
 
     return new Response(
       JSON.stringify({
-        chats: dbChats || [],
+        chats: normalizedChats,
         total: count || 0,
         hasMore: (count || 0) > (offset + limit)
       }),

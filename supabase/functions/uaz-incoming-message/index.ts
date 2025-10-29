@@ -196,7 +196,20 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders);
+    let isMember = false;
+
+    if (userId) {
+      const { data: membership } = await supabaseClient
+        .from('credential_members')
+        .select('user_id')
+        .eq('credential_id', credentialId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      isMember = Boolean(membership);
+    }
+
+    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders, { isMember });
 
     if (ownership.response) {
       return ownership.response;
@@ -204,13 +217,18 @@ const handler = async (req: Request): Promise<Response> => {
 
     const ownedCredential = ownership.credential;
 
-    const eventToken = payload.token ?? payload.eventToken ?? payload.authToken ?? payload.signature;
+    const credentialToken = toString(ownedCredential.token);
+    const eventToken = toString(
+      payload.token ?? payload.eventToken ?? payload.authToken ?? payload.signature ?? "",
+    );
 
-    if (eventToken && eventToken !== ownedCredential.token) {
-      return new Response(
-        JSON.stringify({ error: "Token inválido" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (credentialToken) {
+      if (!eventToken || eventToken !== credentialToken) {
+        return new Response(
+          JSON.stringify({ error: "Token inválido" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     const incomingMessages = extractMessages(payload);

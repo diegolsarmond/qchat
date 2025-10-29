@@ -17,6 +17,7 @@ export type Database = {
       chats: {
         Row: {
           assigned_to: string | null
+          attendance_status: string
           avatar: string | null
           created_at: string
           credential_id: string
@@ -31,6 +32,7 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          attendance_status?: string
           avatar?: string | null
           created_at?: string
           credential_id: string
@@ -45,6 +47,7 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          attendance_status?: string
           avatar?: string | null
           created_at?: string
           credential_id?: string
@@ -116,6 +119,27 @@ export type Database = {
           token?: string
           updated_at?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      credential_members: {
+        Row: {
+          created_at: string
+          credential_id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credential_id: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credential_id?: string
+          role?: string
+          user_id?: string
         }
         Relationships: []
       }

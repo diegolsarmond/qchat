@@ -87,13 +87,38 @@ const handler = async (req: Request): Promise<Response> => {
       console.error('[UAZ Fetch Messages] Failed to fetch credential:', credError);
     }
 
-    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders);
+    let isMember = false;
+
+    if (credential && userId) {
+      const { data: membership } = await supabaseClient
+        .from('credential_members')
+        .select('user_id')
+        .eq('credential_id', credentialId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      isMember = Boolean(membership);
+    }
+
+    const ownership = ensureCredentialOwnership(credential, userId, corsHeaders, { isMember });
 
     if (ownership.response) {
       return ownership.response;
     }
     const ownedCredential = ownership.credential;
 
+    // Fetch chat scoped to the authenticated owner/credential
+    let chatQuery = supabaseClient
+      .from('chats')
+      .select('id, wa_chat_id, credential_id, user_id')
+      .eq('id', chatId)
+      .eq('credential_id', credentialId);
+
+    if (userId) {
+      chatQuery = chatQuery.eq('user_id', userId);
+    }
+
+    const { data: chat, error: chatError } = await chatQuery.single();
     // Fetch chat
     let chatQuery = supabaseClient
       .from('chats')
@@ -105,6 +130,9 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const { data: chat, error: chatError } = await chatQuery.single();
+      .eq('id', chatId)
+      .eq('credential_id', credentialId)
+      .single();
 
     if (chatError || !chat) {
       return new Response(
@@ -158,6 +186,7 @@ const handler = async (req: Request): Promise<Response> => {
       .from('messages')
       .select('*', { count: 'exact' })
       .eq('chat_id', chatId)
+      .eq('credential_id', credentialId)
       .order('message_timestamp', { ascending: order !== 'desc' })
       .range(safeOffset, safeOffset + safeLimit - 1);
 

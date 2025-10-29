@@ -69,6 +69,7 @@ const createChatArea = (showSidebar: boolean) => (
     messages={baseMessages}
     onSendMessage={noop}
     onAssignChat={noopString}
+    onFinishAttendance={noopString}
     onLoadMoreMessages={() => {}}
     hasMoreMessages={false}
     isLoadingMoreMessages={false}
