@@ -34,6 +34,13 @@ export interface Chat {
   labels?: Label[];
 }
 
+export interface Label {
+  id: string;
+  name: string;
+  color: string;
+  credentialId?: string;
+}
+
 export interface Message {
   id: string;
   chatId: string;

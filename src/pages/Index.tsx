@@ -14,6 +14,7 @@ import {
   Message,
   User as WhatsAppUser,
   SendMessagePayload,
+  Label,
 } from "@/types/whatsapp";
 import { mergeFetchedMessages } from "@/lib/message-order";
 import {
@@ -380,7 +381,7 @@ const Index = () => {
       if (error) throw error;
 
       if (data?.chats) {
-        setChats(data.chats.map((c: any) => {
+        const mappedChats: Chat[] = data.chats.map((c: any) => {
           const lastMessageDate = c.last_message_timestamp ? new Date(c.last_message_timestamp) : null;
           const labels = Array.isArray(c.labels)
             ? c.labels
@@ -411,7 +412,71 @@ const Index = () => {
             attendanceStatus: deriveAttendanceStatus(c),
             labels: labels.length > 0 ? labels : undefined,
           };
-        }));
+        });
+
+        let enrichedChats = mappedChats;
+        const chatIds = mappedChats.map(chat => chat.id);
+
+        if (chatIds.length > 0) {
+          const { data: assignments, error: assignmentsError } = await supabase
+            .from('chat_labels')
+            .select('chat_id, label_id')
+            .in('chat_id', chatIds);
+
+          if (assignmentsError) {
+            console.error('Error fetching chat labels:', assignmentsError);
+          } else if (assignments && assignments.length > 0) {
+            const labelIds = Array.from(new Set(assignments.map(item => item.label_id)));
+            let labelsById: Record<string, Label> = {};
+
+            if (labelIds.length > 0) {
+              const { data: labelRows, error: labelsError } = await supabase
+                .from('labels')
+                .select('id, name, color, credential_id')
+                .in('id', labelIds);
+
+              if (labelsError) {
+                console.error('Error fetching labels:', labelsError);
+              } else if (labelRows) {
+                labelsById = labelRows.reduce((acc, row) => {
+                  acc[row.id] = {
+                    id: row.id,
+                    name: row.name,
+                    color: row.color,
+                    credentialId: row.credential_id ?? undefined,
+                  };
+                  return acc;
+                }, {} as Record<string, Label>);
+              }
+            }
+
+            const labelsByChat = new Map<string, Label[]>();
+
+            assignments.forEach(item => {
+              const label = labelsById[item.label_id];
+              if (!label) {
+                return;
+              }
+              const list = labelsByChat.get(item.chat_id) ?? [];
+              list.push(label);
+              labelsByChat.set(item.chat_id, list);
+            });
+
+            enrichedChats = mappedChats.map(chat => ({
+              ...chat,
+              labels: labelsByChat.get(chat.id) ?? [],
+            }));
+          }
+        }
+
+        setChats(enrichedChats);
+        setSelectedChat(prev => {
+          if (!prev) {
+            return prev;
+          }
+          const next = enrichedChats.find(chat => chat.id === prev.id);
+          return next ? { ...next } : prev;
+        });
       }
     } catch (error) {
       console.error('Error fetching chats:', error);
@@ -857,6 +922,118 @@ const Index = () => {
     fetchMessages(selectedChat.id);
   };
 
+  const handleAssignLabelToChat = useCallback(
+    async (chatId: string, label: Label) => {
+      const currentChat = chats.find(chat => chat.id === chatId) || (selectedChat?.id === chatId ? selectedChat : null);
+      if (currentChat?.labels?.some(item => item.id === label.id)) {
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('chat_labels')
+          .insert({ chat_id: chatId, label_id: label.id });
+
+        if (error) {
+          throw error;
+        }
+
+        setChats(prev =>
+          prev.map(chat => {
+            if (chat.id !== chatId) {
+              return chat;
+            }
+            const previous = chat.labels ?? [];
+            if (previous.some(item => item.id === label.id)) {
+              return chat;
+            }
+            const next = [...previous, label];
+            next.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+            return { ...chat, labels: next };
+          })
+        );
+
+        setSelectedChat(prev => {
+          if (!prev || prev.id !== chatId) {
+            return prev;
+          }
+          const previous = prev.labels ?? [];
+          if (previous.some(item => item.id === label.id)) {
+            return prev;
+          }
+          const next = [...previous, label];
+          next.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+          return { ...prev, labels: next };
+        });
+      } catch (unknownError) {
+        console.error('Error assigning label:', unknownError);
+        toast({
+          title: "Erro",
+          description: "Não foi possível atribuir a etiqueta",
+          variant: "destructive",
+        });
+        throw unknownError;
+      }
+    },
+    [chats, selectedChat, toast]
+  );
+
+  const handleRemoveLabelFromChat = useCallback(
+    async (chatId: string, label: Label) => {
+      const currentChat = chats.find(chat => chat.id === chatId) || (selectedChat?.id === chatId ? selectedChat : null);
+      if (!currentChat?.labels?.some(item => item.id === label.id)) {
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('chat_labels')
+          .delete()
+          .eq('chat_id', chatId)
+          .eq('label_id', label.id);
+
+        if (error) {
+          throw error;
+        }
+
+        setChats(prev =>
+          prev.map(chat => {
+            if (chat.id !== chatId) {
+              return chat;
+            }
+            const previous = chat.labels ?? [];
+            if (!previous.some(item => item.id === label.id)) {
+              return chat;
+            }
+            const next = previous.filter(item => item.id !== label.id);
+            return { ...chat, labels: next };
+          })
+        );
+
+        setSelectedChat(prev => {
+          if (!prev || prev.id !== chatId) {
+            return prev;
+          }
+          const previous = prev.labels ?? [];
+          if (!previous.some(item => item.id === label.id)) {
+            return prev;
+          }
+          const next = previous.filter(item => item.id !== label.id);
+          return { ...prev, labels: next };
+        });
+      } catch (unknownError) {
+        console.error('Error removing label:', unknownError);
+        toast({
+          title: "Erro",
+          description: "Não foi possível remover a etiqueta",
+          variant: "destructive",
+        });
+        throw unknownError;
+      }
+    },
+    [chats, selectedChat, toast]
+  );
+
   // Setup flow
   if (!credentialId) {
     return <CredentialSetup onSetupComplete={handleSetupComplete} />;
@@ -903,6 +1080,8 @@ const Index = () => {
           showSidebar={showSidebar}
           onShowSidebar={() => setShowSidebar(true)}
           credentialId={credentialId}
+          onAssignLabel={handleAssignLabelToChat}
+          onRemoveLabel={handleRemoveLabelFromChat}
         />
       </div>
 

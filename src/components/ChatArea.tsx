@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,14 +22,18 @@ import {
   List,
   UserPlus,
   MapPin,
-  Download
+  Download,
+  Tag
 } from "lucide-react";
-import { Chat, Message, SendMessagePayload } from "@/types/whatsapp";
+import { Chat, Message, SendMessagePayload, Label } from "@/types/whatsapp";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -458,6 +462,8 @@ interface ChatAreaProps {
   showSidebar: boolean;
   onShowSidebar: () => void;
   credentialId?: string | null;
+  onAssignLabel?: (chatId: string, label: Label) => Promise<void> | void;
+  onRemoveLabel?: (chatId: string, label: Label) => Promise<void> | void;
 }
 
 export const ChatArea = ({
@@ -473,6 +479,8 @@ export const ChatArea = ({
   showSidebar,
   onShowSidebar,
   credentialId,
+  onAssignLabel,
+  onRemoveLabel,
 }: ChatAreaProps) => {
   const [messageText, setMessageText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -494,6 +502,9 @@ export const ChatArea = ({
   const [showContactForm, setShowContactForm] = useState(false);
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [availableLabels, setAvailableLabels] = useState<Label[]>([]);
+  const [isLoadingLabels, setIsLoadingLabels] = useState(false);
+  const [labelLoadingMap, setLabelLoadingMap] = useState<Record<string, boolean>>({});
   const onSendMessageRef = useRef(onSendMessage);
   const isPrivateRef = useRef(isPrivate);
   const recorderRef = useRef<ReturnType<typeof createAudioRecorder> | null>(null);
@@ -501,7 +512,119 @@ export const ChatArea = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const orderedMessages = useMemo(() => [...messages], [messages]);
+  const selectedLabelIds = useMemo(() => new Set((chat?.labels ?? []).map(label => label.id)), [chat?.labels]);
   const audioSourceCacheRef = useRef<Map<string, CachedAudioSource>>(new Map());
+  const fetchAvailableLabels = useCallback(async () => {
+    if (!credentialId) {
+      return [] as Label[];
+    }
+
+    const { data, error } = await supabase
+      .from('labels')
+      .select('id, name, color, credential_id')
+      .eq('credential_id', credentialId)
+      .order('name', { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = data ?? [];
+    return rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      color: row.color,
+      credentialId: row.credential_id ?? undefined,
+    }));
+  }, [credentialId]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadLabels = async () => {
+      if (!credentialId) {
+        if (active) {
+          setAvailableLabels([]);
+          setIsLoadingLabels(false);
+        }
+        return;
+      }
+
+      if (active) {
+        setIsLoadingLabels(true);
+      }
+
+      try {
+        const labels = await fetchAvailableLabels();
+        if (active) {
+          setAvailableLabels(labels);
+        }
+      } catch (unknownError) {
+        console.error('Error fetching labels:', unknownError);
+        if (active) {
+          setAvailableLabels([]);
+        }
+      } finally {
+        if (active) {
+          setIsLoadingLabels(false);
+        }
+      }
+    };
+
+    loadLabels();
+
+    return () => {
+      active = false;
+    };
+  }, [credentialId, fetchAvailableLabels]);
+
+  const refreshLabels = useCallback(async () => {
+    if (!credentialId) {
+      setAvailableLabels([]);
+      return;
+    }
+
+    setIsLoadingLabels(true);
+
+    try {
+      const labels = await fetchAvailableLabels();
+      setAvailableLabels(labels);
+    } catch (unknownError) {
+      console.error('Error refreshing labels:', unknownError);
+      setAvailableLabels([]);
+    } finally {
+      setIsLoadingLabels(false);
+    }
+  }, [credentialId, fetchAvailableLabels]);
+
+  const handleToggleLabelSelection = useCallback(
+    async (label: Label, nextChecked: boolean) => {
+      if (!chat) {
+        return;
+      }
+
+      setLabelLoadingMap(prev => ({ ...prev, [label.id]: true }));
+
+      try {
+        if (nextChecked) {
+          if (onAssignLabel) {
+            await onAssignLabel(chat.id, label);
+          }
+        } else if (onRemoveLabel) {
+          await onRemoveLabel(chat.id, label);
+        }
+      } catch (unknownError) {
+        console.error('Error updating label selection:', unknownError);
+      } finally {
+        setLabelLoadingMap(prev => {
+          const next = { ...prev };
+          delete next[label.id];
+          return next;
+        });
+      }
+    },
+    [chat, onAssignLabel, onRemoveLabel]
+  );
   const { audioSources, urlsToRevoke } = useMemo(() => {
     const previousCache = audioSourceCacheRef.current;
     const nextCache = new Map<string, CachedAudioSource>();
@@ -1170,6 +1293,66 @@ export const ChatArea = ({
           <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-white/10">
             <Phone className="w-5 h-5" />
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-primary-foreground hover:bg-white/10"
+                disabled={!chat}
+              >
+                <Tag className="w-5 h-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Etiquetas</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {isLoadingLabels ? (
+                <DropdownMenuItem disabled>Carregando...</DropdownMenuItem>
+              ) : availableLabels.length === 0 ? (
+                <DropdownMenuItem disabled>Nenhuma etiqueta</DropdownMenuItem>
+              ) : (
+                availableLabels.map(label => {
+                  const checked = selectedLabelIds.has(label.id);
+                  const isUpdating = Boolean(labelLoadingMap[label.id]);
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={label.id}
+                      checked={checked}
+                      disabled={isUpdating}
+                      onCheckedChange={value => {
+                        if (!chat) {
+                          return;
+                        }
+                        const nextChecked = value === true;
+                        if (nextChecked === checked) {
+                          return;
+                        }
+                        handleToggleLabelSelection(label, nextChecked);
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="h-3 w-3 rounded-full"
+                          style={{ backgroundColor: label.color }}
+                        />
+                        {label.name}
+                      </span>
+                    </DropdownMenuCheckboxItem>
+                  );
+                })
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => {
+                  refreshLabels();
+                }}
+                disabled={isLoadingLabels || !credentialId}
+              >
+                Atualizar lista
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-white/10">
             <Search className="w-5 h-5" />
           </Button>
