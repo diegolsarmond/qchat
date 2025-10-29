@@ -99,6 +99,7 @@ const handler = async (req: Request): Promise<Response> => {
       .from('chats')
       .select('wa_chat_id')
       .eq('id', chatId)
+      .eq('credential_id', credentialId)
       .single();
 
     if (chatError || !chat) {
@@ -152,6 +153,7 @@ const handler = async (req: Request): Promise<Response> => {
       .from('messages')
       .select('*', { count: 'exact' })
       .eq('chat_id', chatId)
+      .eq('credential_id', credentialId)
       .order('message_timestamp', { ascending: order !== 'desc' })
       .range(safeOffset, safeOffset + safeLimit - 1);
 

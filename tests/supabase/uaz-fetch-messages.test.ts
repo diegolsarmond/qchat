@@ -305,17 +305,23 @@ test('handler de uaz-fetch-messages processa token válido e upserta mensagens',
       }
 
       if (table === 'chats') {
-        return {
+        const query = {
           select() {
-            return this;
+            return query;
           },
           eq(field: string, value: string) {
-            assert.equal(field, 'id');
-            assert.equal(value, 'chat-1');
-            return this;
+            if (field === 'id') {
+              assert.equal(value, 'chat-1');
+            } else {
+              assert.equal(field, 'credential_id');
+              assert.equal(value, 'cred-1');
+            }
+            return query;
           },
           single: async () => ({ data: chatRecord, error: null }),
         };
+
+        return query;
       }
 
       if (table === 'messages') {
@@ -324,8 +330,12 @@ test('handler de uaz-fetch-messages processa token válido e upserta mensagens',
             return query;
           },
           eq(field: string, value: string) {
-            assert.equal(field, 'chat_id');
-            assert.equal(value, 'chat-1');
+            if (field === 'chat_id') {
+              assert.equal(value, 'chat-1');
+            } else {
+              assert.equal(field, 'credential_id');
+              assert.equal(value, 'cred-1');
+            }
             return query;
           },
           order() {
