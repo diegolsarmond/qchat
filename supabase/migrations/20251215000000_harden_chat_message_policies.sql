@@ -126,6 +126,14 @@ USING (
               WHERE c.id = ch.credential_id
                 AND c.user_id = auth.uid()
             )
+            OR (
+              ch.assigned_to IS NULL
+              AND (
+                COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+              )
+            )
           )
       )
     )
@@ -158,6 +166,14 @@ USING (
               WHERE c.id = ch.credential_id
                 AND c.user_id = auth.uid()
             )
+            OR (
+              ch.assigned_to IS NULL
+              AND (
+                COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+              )
+            )
           )
       )
     )
@@ -185,6 +201,14 @@ WITH CHECK (
               FROM public.credentials c
               WHERE c.id = ch.credential_id
                 AND c.user_id = auth.uid()
+            )
+            OR (
+              ch.assigned_to IS NULL
+              AND (
+                COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+              )
             )
           )
       )
