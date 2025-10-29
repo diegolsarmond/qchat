@@ -134,6 +134,7 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
       console.error('Error fetching connection status:', error);
       setLoading(false);
       setStatus("Erro ao verificar conexão");
+      ensurePolling();
       toast({
         title: "Erro",
         description: "Falha ao verificar status da conexão",
