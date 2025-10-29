@@ -180,7 +180,6 @@ test('upsertFetchedMessages aplica resolveMessageStorage e upserta mensagens ind
     messages,
     chatId: 'chat-1',
     credentialId: 'cred-1',
-    userId: 'user-1',
   });
 
   assert.equal(upsertCalls.length, messages.length);
@@ -204,7 +203,6 @@ test('upsertFetchedMessages aplica resolveMessageStorage e upserta mensagens ind
     assert.deepEqual(record, {
       chat_id: 'chat-1',
       credential_id: 'cred-1',
-      user_id: 'user-1',
       wa_message_id: original.messageid,
       content: storage.content,
       message_type: storage.messageType,
@@ -257,7 +255,6 @@ test('upsertFetchedMessages ignora mensagens inválidas mantendo demais upserts'
     messages,
     chatId: 'chat-1',
     credentialId: 'cred-1',
-    userId: 'user-1',
   });
 
   assert.equal(upsertCalls.length, 1);
@@ -313,17 +310,11 @@ test('handler de uaz-fetch-messages processa token válido e upserta mensagens',
             return this;
           },
           eq(field: string, value: string) {
-            if (field === 'id') {
-              assert.equal(value, 'chat-1');
-              return this;
-            }
-
-            assert.equal(field, 'user_id');
-            assert.equal(value, 'user-123');
-            return {
-              single: async () => ({ data: chatRecord, error: null }),
-            };
+            assert.equal(field, 'id');
+            assert.equal(value, 'chat-1');
+            return this;
           },
+          single: async () => ({ data: chatRecord, error: null }),
         };
       }
 
@@ -333,13 +324,8 @@ test('handler de uaz-fetch-messages processa token válido e upserta mensagens',
             return query;
           },
           eq(field: string, value: string) {
-            if (field === 'chat_id') {
-              assert.equal(value, 'chat-1');
-              return query;
-            }
-
-            assert.equal(field, 'user_id');
-            assert.equal(value, 'user-123');
+            assert.equal(field, 'chat_id');
+            assert.equal(value, 'chat-1');
             return query;
           },
           order() {
