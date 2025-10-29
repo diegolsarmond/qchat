@@ -313,20 +313,28 @@ const Index = () => {
   }, [isConnected, credentialId, selectedChat]);
 
   const deriveAttendanceStatus = (chat: any): Chat["attendanceStatus"] => {
-    const source = typeof chat.attendance_status === "string"
-      ? chat.attendance_status
-      : typeof chat.attendanceStatus === "string"
-        ? chat.attendanceStatus
-        : "";
+    const source =
+      (typeof chat.attendance_status === "string" && chat.attendance_status) ||
+      (typeof chat.attendanceStatus === "string" && chat.attendanceStatus) ||
+      (typeof chat.status === "string" && chat.status) ||
+      "";
 
     const normalized = source.toLowerCase();
 
-    if (normalized === "in_service") {
+    if (["finished", "finalized", "closed"].includes(normalized)) {
+      return "finished";
+    }
+
+    if (["in_service", "in progress", "in_progress", "active"].includes(normalized)) {
       return "in_service";
     }
 
-    if (normalized === "finished") {
-      return "finished";
+    if (["waiting", "pending", "queued"].includes(normalized)) {
+      return chat.assigned_to || chat.assignedTo ? "in_service" : "waiting";
+    }
+
+    if (chat.assigned_to || chat.assignedTo) {
+      return "in_service";
     }
 
     return "waiting";
