@@ -219,7 +219,7 @@ test('handler de uaz-fetch-chats rejeita requisição sem Authorization', async 
 test('handler de uaz-fetch-chats processa token válido com uma única criação de cliente', async () => {
   const credentialRecord = { id: 'cred-1', user_id: 'user-123', subdomain: 'tenant', token: 'uaz-token' };
   const dbChats = [
-    { id: 'chat-db', credential_id: 'cred-1', user_id: 'user-123', last_message_timestamp: 123 },
+    { id: 'chat-db', credential_id: 'cred-1', user_id: 'user-123', last_message_timestamp: 123, attendance_status: 'in_service' },
   ];
 
   const supabaseClient = {
@@ -291,7 +291,7 @@ test('handler de uaz-fetch-chats processa token válido com uma única criação
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.deepEqual(payload, {
-    chats: dbChats,
+    chats: dbChats.map(chat => ({ ...chat, attendance_status: chat.attendance_status ?? 'waiting' })),
     total: dbChats.length,
     hasMore: false,
   });
