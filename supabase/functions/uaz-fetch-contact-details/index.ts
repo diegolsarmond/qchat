@@ -72,16 +72,20 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     let isMember = false;
+    let membershipRole: string | null = null;
 
     if (credential && userId) {
       const { data: membership } = await supabaseClient
         .from('credential_members')
-        .select('user_id')
+        .select('user_id, role')
         .eq('credential_id', credentialId)
         .eq('user_id', userId)
         .maybeSingle();
 
       isMember = Boolean(membership);
+      if (membership && typeof membership.role === 'string') {
+        membershipRole = membership.role;
+      }
     }
 
     const ownership = ensureCredentialOwnership(credential, userId, corsHeaders, { isMember });
@@ -94,12 +98,9 @@ const handler = async (req: Request): Promise<Response> => {
     // Fetch chat to get wa_chat_id
     let chatQuery = supabaseClient
       .from('chats')
-      .select('wa_chat_id')
-      .eq('id', chatId);
-
-    if (userId) {
-      chatQuery = chatQuery.eq('user_id', userId);
-    }
+      .select('wa_chat_id, assigned_to, credential_id')
+      .eq('id', chatId)
+      .eq('credential_id', credentialId);
 
     const { data: chat, error: chatError } = await chatQuery.single();
 
@@ -107,6 +108,17 @@ const handler = async (req: Request): Promise<Response> => {
       return new Response(
         JSON.stringify({ error: 'Chat not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const normalizedRole = typeof membershipRole === 'string' ? membershipRole.toLowerCase() : null;
+    const isCredentialOwner = ownedCredential.user_id === userId;
+    const hasElevatedMembership = normalizedRole === 'owner' || normalizedRole === 'admin';
+
+    if (!isCredentialOwner && !hasElevatedMembership && userId && chat.assigned_to !== userId) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -149,10 +161,15 @@ const handler = async (req: Request): Promise<Response> => {
         name: contactDetails.name || contactDetails.wa_name || contactDetails.wa_contactName || phoneNumber,
         avatar: contactDetails.image || null,
       })
-      .eq('id', chatId);
+      .eq('id', chatId)
+      .eq('credential_id', credentialId);
 
-    if (userId) {
-      updateQuery = updateQuery.eq('user_id', userId);
+    if (isCredentialOwner || hasElevatedMembership) {
+      if (ownedCredential.user_id) {
+        updateQuery = updateQuery.eq('user_id', ownedCredential.user_id);
+      }
+    } else if (userId) {
+      updateQuery = updateQuery.eq('assigned_to', userId);
     }
 
     await updateQuery;
