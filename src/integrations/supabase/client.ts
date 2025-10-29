@@ -39,10 +39,44 @@ const envSource: EnvSource = loadBundlerEnv() ?? loadImportMetaEnv() ?? processE
 
 const DEFAULT_SUPABASE_URL = 'http://localhost:54321';
 const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'public-anon-key';
+const DEFAULT_SUPABASE_PROJECT_ID = 'default';
 
 const normalizeEnvValue = (value: string | undefined) => (typeof value === 'string' ? value.trim() : undefined);
 
-const SUPABASE_URL = normalizeEnvValue(envSource.VITE_SUPABASE_URL) ?? DEFAULT_SUPABASE_URL;
+const SUPABASE_PROJECT_ID = normalizeEnvValue(envSource.VITE_SUPABASE_PROJECT_ID) ?? DEFAULT_SUPABASE_PROJECT_ID;
+const SUPABASE_BASE_URL = normalizeEnvValue(envSource.VITE_SUPABASE_URL) ?? DEFAULT_SUPABASE_URL;
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
+
+const shouldAppendProjectPath = (url: URL) => {
+  if (LOCAL_HOSTNAMES.has(url.hostname)) {
+    return false;
+  }
+
+  if (url.hostname.endsWith('.supabase.co')) {
+    return false;
+  }
+
+  const pathname = url.pathname;
+  return !/\/project\//.test(pathname) && !/\/projects\//.test(pathname);
+};
+
+const buildSupabaseUrl = (baseUrl: string, projectId: string) => {
+  try {
+    const parsedUrl = new URL(baseUrl);
+    if (projectId && shouldAppendProjectPath(parsedUrl)) {
+      const trimmedPath = parsedUrl.pathname.endsWith('/')
+        ? parsedUrl.pathname.slice(0, -1)
+        : parsedUrl.pathname;
+      parsedUrl.pathname = `${trimmedPath}/project/${projectId}`.replace('//', '/');
+      return parsedUrl.toString().replace(/\/$/, '');
+    }
+    return parsedUrl.toString().replace(/\/$/, '');
+  } catch {
+    return baseUrl;
+  }
+};
+
+const SUPABASE_URL = buildSupabaseUrl(SUPABASE_BASE_URL, SUPABASE_PROJECT_ID);
 const SUPABASE_PUBLISHABLE_KEY =
   normalizeEnvValue(envSource.VITE_SUPABASE_PUBLISHABLE_KEY) ?? DEFAULT_SUPABASE_PUBLISHABLE_KEY;
 
