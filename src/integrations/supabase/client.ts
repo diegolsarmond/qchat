@@ -40,8 +40,11 @@ const envSource: EnvSource = loadBundlerEnv() ?? loadImportMetaEnv() ?? processE
 const DEFAULT_SUPABASE_URL = 'http://localhost:54321';
 const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'public-anon-key';
 
-const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? DEFAULT_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? DEFAULT_SUPABASE_PUBLISHABLE_KEY;
+const normalizeEnvValue = (value: string | undefined) => (typeof value === 'string' ? value.trim() : undefined);
+
+const SUPABASE_URL = normalizeEnvValue(envSource.VITE_SUPABASE_URL) ?? DEFAULT_SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY =
+  normalizeEnvValue(envSource.VITE_SUPABASE_PUBLISHABLE_KEY) ?? DEFAULT_SUPABASE_PUBLISHABLE_KEY;
 
 const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
