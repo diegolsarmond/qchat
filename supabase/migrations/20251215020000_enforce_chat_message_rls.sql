@@ -1,9 +1,9 @@
 DROP FUNCTION IF EXISTS public.chat_user_id_change_allowed(public.chats);
 DROP FUNCTION IF EXISTS public.message_user_id_change_allowed(public.messages);
-DROP FUNCTION IF EXISTS public.chat_user_id_guard();
-DROP FUNCTION IF EXISTS public.message_user_id_guard();
 DROP TRIGGER IF EXISTS chat_user_id_guard ON public.chats;
 DROP TRIGGER IF EXISTS message_user_id_guard ON public.messages;
+DROP FUNCTION IF EXISTS public.chat_user_id_guard();
+DROP FUNCTION IF EXISTS public.message_user_id_guard();
 
 DROP POLICY IF EXISTS "Chats are viewable by everyone" ON public.chats;
 DROP POLICY IF EXISTS "Chats can be created by anyone" ON public.chats;
