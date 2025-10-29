@@ -158,7 +158,7 @@ const handler = async (req: Request): Promise<Response> => {
       const errorText = await messagesResponse.text();
       console.error('[UAZ Fetch Messages] UAZ API error:', errorText);
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch messages' }),
+        JSON.stringify({ error: errorText || 'Failed to fetch messages' }),
         { status: messagesResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

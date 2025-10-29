@@ -435,7 +435,7 @@ serve(async (req) => {
       const errorText = await messageResponse.text();
       console.error("[UAZ Send Message] UAZ API error:", errorText);
       return new Response(
-        JSON.stringify({ error: "Failed to send message" }),
+        JSON.stringify({ error: errorText || "Failed to send message" }),
         { status: messageResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }

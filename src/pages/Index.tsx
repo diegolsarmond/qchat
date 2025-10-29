@@ -545,9 +545,17 @@ const Index = () => {
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
+      const { message: rawMessage, error: rawError } = typeof error === 'object' && error !== null
+        ? (error as { message?: unknown; error?: unknown })
+        : { message: undefined, error: undefined };
+      const parsedMessage = typeof rawMessage === 'string' && rawMessage.trim().length > 0
+        ? rawMessage
+        : typeof rawError === 'string' && rawError.trim().length > 0
+          ? rawError
+          : undefined;
       toast({
         title: "Erro",
-        description: "Falha ao carregar mensagens",
+        description: parsedMessage ?? "Falha ao carregar mensagens",
         variant: "destructive",
       });
     } finally {
