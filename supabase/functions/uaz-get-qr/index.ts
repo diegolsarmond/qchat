@@ -103,6 +103,10 @@ const handler = async (req: Request): Promise<Response> => {
     const ownedCredential = ownership.credential as typeof ownership.credential & {
       subdomain?: string;
       token?: string;
+      status?: string | null;
+      qr_code?: string | null;
+      profile_name?: string | null;
+      phone_number?: string | null;
     };
 
     if (!ownedCredential.subdomain || !ownedCredential.token) {
@@ -114,21 +118,41 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log('[UAZ Get QR] Fetching instance info from:', ownedCredential.subdomain);
 
+    const fallbackStatus = typeof ownedCredential.status === 'string' && ownedCredential.status.length > 0
+      ? ownedCredential.status
+      : 'disconnected';
+
+    const fallbackResponse = () => new Response(
+      JSON.stringify({
+        status: fallbackStatus,
+        qrCode: ownedCredential.qr_code ?? null,
+        profileName: ownedCredential.profile_name ?? null,
+        phoneNumber: ownedCredential.phone_number ?? null,
+        connected: fallbackStatus.toLowerCase() === 'connected',
+        pairingCode: null,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+
     // Get instance status from UAZ API
-    const instanceResponse = await fetch(`https://${ownedCredential.subdomain}.uazapi.com/instance/status`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'token': ownedCredential.token,
-      },
-    });
+    let instanceResponse: Response;
+
+    try {
+      instanceResponse = await fetch(`https://${ownedCredential.subdomain}.uazapi.com/instance/status`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'token': ownedCredential.token,
+        },
+      });
+    } catch (requestError) {
+      console.error('[UAZ Get QR] Failed to reach UAZ API:', requestError);
+      return fallbackResponse();
+    }
 
     if (!instanceResponse.ok) {
       console.error('[UAZ Get QR] UAZ API error:', await instanceResponse.text());
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch instance info' }),
-        { status: instanceResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return fallbackResponse();
     }
 
     type InstanceData = {

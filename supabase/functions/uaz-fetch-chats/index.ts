@@ -116,7 +116,6 @@ const handler = async (req: Request): Promise<Response> => {
       await persistChats({
         supabaseClient,
         credentialId,
-        userId,
         chats,
       });
     } catch (upsertError) {
@@ -131,11 +130,12 @@ const handler = async (req: Request): Promise<Response> => {
       .order('last_message_timestamp', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (userId) {
-      chatsQuery = chatsQuery.eq('user_id', userId);
-    }
-
     const { data: dbChats, error: dbError, count } = await chatsQuery;
+
+    const normalizedChats = (dbChats || []).map((chat) => ({
+      ...chat,
+      attendance_status: chat.attendance_status ?? 'waiting',
+    }));
 
     if (dbError) {
       console.error('[UAZ Fetch Chats] Failed to fetch from DB:', dbError);
@@ -143,7 +143,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     return new Response(
       JSON.stringify({
-        chats: dbChats || [],
+        chats: normalizedChats,
         total: count || 0,
         hasMore: (count || 0) > (offset + limit)
       }),
