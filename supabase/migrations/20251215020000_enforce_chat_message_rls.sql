@@ -1,3 +1,6 @@
+DROP FUNCTION IF EXISTS public.chat_user_id_change_allowed(public.chats);
+DROP FUNCTION IF EXISTS public.message_user_id_change_allowed(public.messages);
+
 DROP POLICY IF EXISTS "Chats are viewable by everyone" ON public.chats;
 DROP POLICY IF EXISTS "Chats can be created by anyone" ON public.chats;
 DROP POLICY IF EXISTS "Chats can be updated by anyone" ON public.chats;
@@ -9,6 +12,64 @@ DROP POLICY IF EXISTS "Service or owners can create chats" ON public.chats;
 DROP POLICY IF EXISTS "Users with access can view messages" ON public.messages;
 DROP POLICY IF EXISTS "Users with access can update messages" ON public.messages;
 DROP POLICY IF EXISTS "Service or owners can create messages" ON public.messages;
+
+CREATE OR REPLACE FUNCTION public.chat_user_id_change_allowed(new_chat public.chats)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  existing_user_id uuid;
+BEGIN
+  IF auth.role() = 'service_role' THEN
+    RETURN true;
+  END IF;
+
+  SELECT user_id INTO existing_user_id
+  FROM public.chats
+  WHERE id = new_chat.id;
+
+  IF NOT FOUND THEN
+    RETURN new_chat.user_id IS NULL OR new_chat.user_id = auth.uid();
+  END IF;
+
+  IF existing_user_id IS DISTINCT FROM new_chat.user_id THEN
+    RETURN new_chat.user_id = auth.uid();
+  END IF;
+
+  RETURN true;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.message_user_id_change_allowed(new_message public.messages)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  existing_user_id uuid;
+BEGIN
+  IF auth.role() = 'service_role' THEN
+    RETURN true;
+  END IF;
+
+  SELECT user_id INTO existing_user_id
+  FROM public.messages
+  WHERE id = new_message.id;
+
+  IF NOT FOUND THEN
+    RETURN new_message.user_id IS NULL OR new_message.user_id = auth.uid();
+  END IF;
+
+  IF existing_user_id IS DISTINCT FROM new_message.user_id THEN
+    RETURN new_message.user_id = auth.uid();
+  END IF;
+
+  RETURN true;
+END;
+$$;
 
 CREATE POLICY "Chats can be viewed by permitted users"
 ON public.chats
@@ -88,6 +149,7 @@ WITH CHECK (
       )
     )
   )
+  AND public.chat_user_id_change_allowed(public.chats)
 );
 
 CREATE POLICY "Chats can be inserted by service or owners"
@@ -227,6 +289,7 @@ WITH CHECK (
       )
     )
   )
+  AND public.message_user_id_change_allowed(public.messages)
 );
 
 CREATE POLICY "Messages can be inserted by service or owners"
