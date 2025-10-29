@@ -7,6 +7,7 @@ type UpsertFetchedMessagesParams = {
   messages: Array<Record<string, any>>;
   chatId: string;
   credentialId: string;
+  credentialUserId?: string | null;
 };
 
 export async function upsertFetchedMessages({
@@ -14,6 +15,7 @@ export async function upsertFetchedMessages({
   messages,
   chatId,
   credentialId,
+  credentialUserId,
 }: UpsertFetchedMessagesParams) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return;
@@ -47,6 +49,7 @@ export async function upsertFetchedMessages({
       status: msg.status || "",
       message_timestamp: msg.messageTimestamp || 0,
       is_private: Boolean(msg.isPrivate),
+      ...(credentialUserId ? { user_id: credentialUserId } : {}),
     };
   });
 
