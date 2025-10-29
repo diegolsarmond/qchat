@@ -2,18 +2,58 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { ReactElement } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { ReactElement, useEffect, useState } from "react";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Admin from "./pages/Admin";
 import Register from "./pages/Register";
+import { supabase } from "@/integrations/supabase/client";
 
 type ProtectedRouteProps = {
   element: ReactElement;
 };
 
 const ProtectedRoute = ({ element }: ProtectedRouteProps) => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!active) return;
+      setIsAuthenticated(Boolean(data.session));
+      setIsLoading(false);
+    };
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_, session) => {
+      if (!active) return;
+      setIsAuthenticated(Boolean(session));
+      setIsLoading(false);
+    });
+
+    loadSession();
+
+    return () => {
+      active = false;
+      listener?.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (isLoading) {
+    return null;
+  }
+
+  if (!isAuthenticated) {
+    const navigateElement = <Navigate to="/login" replace />;
+    if (typeof window === "undefined") {
+      return { ...navigateElement, type: "Navigate" } as ReactElement;
+    }
+    return navigateElement;
+  }
+
   return element;
 };
 
