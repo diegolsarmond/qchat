@@ -173,10 +173,26 @@ const handler = async (req: Request): Promise<Response> => {
       messages,
       chatId,
       credentialId,
-      credentialUserId: ownedCredential.user_id ?? undefined,
+      credentialUserId: credentialOwnerId ?? undefined,
     });
 
     // Fetch updated messages from database with pagination
+    let shouldFilterMessagesByUserId = Boolean(credentialOwnerId);
+
+    if (shouldFilterMessagesByUserId) {
+      const { data: messageScope } = await supabaseClient
+        .from('messages')
+        .select('user_id')
+        .eq('chat_id', chatId)
+        .eq('credential_id', credentialId)
+        .not('user_id', 'is', null)
+        .limit(1);
+
+      if (!messageScope || messageScope.length === 0) {
+        shouldFilterMessagesByUserId = false;
+      }
+    }
+
     let messagesQuery = supabaseClient
       .from('messages')
       .select('*', { count: 'exact' })
@@ -185,8 +201,8 @@ const handler = async (req: Request): Promise<Response> => {
       .order('message_timestamp', { ascending: order !== 'desc' })
       .range(safeOffset, safeOffset + safeLimit - 1);
 
-    if (ownedCredential.user_id) {
-      messagesQuery = messagesQuery.eq('user_id', ownedCredential.user_id);
+    if (shouldFilterMessagesByUserId && credentialOwnerId) {
+      messagesQuery = messagesQuery.eq('user_id', credentialOwnerId);
     }
 
     const { data: dbMessages, error: dbError, count } = await messagesQuery;
