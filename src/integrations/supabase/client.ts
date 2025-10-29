@@ -24,6 +24,10 @@ const loadBundlerEnv = (): EnvSource | undefined => {
   }
 
   return undefined;
+const loadImportMetaEnv = (): EnvSource | undefined => {
+  return typeof import.meta !== 'undefined'
+    ? ((import.meta as ImportMeta & { env?: EnvSource })?.env ?? undefined)
+    : undefined;
 };
 
 const processEnv = typeof process !== 'undefined'
@@ -32,18 +36,46 @@ const processEnv = typeof process !== 'undefined'
 
 const envSource: EnvSource = loadBundlerEnv() ?? processEnv ?? {};
 
-const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? 'http://localhost:54321';
-const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? 'test-key';
+const SUPABASE_URL = 'https://supabase02.quantumtecnologia.com.br';
+const SUPABASE_PUBLISHABLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
 
 const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
+type SupabaseClientInstance = ReturnType<typeof createClient<Database>>;
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    storage: authStorage,
-    persistSession: true,
-    autoRefreshToken: true,
-  }
-});
+const globalSupabase = globalThis as typeof globalThis & { __supabaseClient__?: SupabaseClientInstance };
+
+if (!globalSupabase.__supabaseClient__) {
+  globalSupabase.__supabaseClient__ = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      storage: authStorage,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+    global: {
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+      },
+    },
+  });
+}
+
+const supabaseInstance = globalSupabase.__supabaseClient__;
+
+const originalInvoke = supabaseInstance.functions.invoke.bind(supabaseInstance.functions);
+
+supabaseInstance.functions.invoke = (async (functionName, options) => {
+  const { data } = await supabaseInstance.auth.getSession();
+  const accessToken = data?.session?.access_token;
+
+  const headers = accessToken
+    ? { ...(options?.headers ?? {}), Authorization: `Bearer ${accessToken}` }
+    : options?.headers;
+
+  return originalInvoke(functionName, {
+    ...(options ?? {}),
+    ...(headers ? { headers } : {}),
+  });
+}) as typeof supabaseInstance.functions.invoke;
+
+export const supabase = supabaseInstance;

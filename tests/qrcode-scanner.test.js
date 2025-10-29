@@ -280,3 +280,64 @@ test("QRCodeScanner encerra polling quando a conexão é detectada", async () =>
     global.setTimeout = originalSetTimeout;
   }
 });
+
+test("QRCodeScanner trata resposta vazia sem exibir erro", async () => {
+  const reactStub = createReactStub();
+  const toastCalls = [];
+
+  const supabaseStub = {
+    functions: {
+      async invoke() {
+        return { data: undefined, error: null };
+      },
+    },
+    from() {
+      return {
+        select() {
+          return {
+            eq() {
+              return {
+                async single() {
+                  return { data: { instance_name: "Instance" }, error: null };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const toastStub = (payload) => {
+    toastCalls.push(payload);
+  };
+
+  const originalSetInterval = global.setInterval;
+  const originalClearInterval = global.clearInterval;
+  let intervalCallback;
+  global.setInterval = (callback) => {
+    intervalCallback = callback;
+    return 7;
+  };
+  global.clearInterval = () => {};
+
+  try {
+    const module = loadQRCodeScanner(reactStub, { supabaseStub, toastStub });
+    const { QRCodeScanner } = module;
+
+    reactStub.__render(QRCodeScanner, { credentialId: "cred", onConnected: () => {} });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const state = reactStub.__getState();
+    assert.equal(toastCalls.length, 0);
+    assert.equal(state[1], false);
+    assert.equal(state[2], "Status desconhecido. Tente novamente.");
+  } finally {
+    reactStub.__runCleanups();
+    global.setInterval = originalSetInterval;
+    global.clearInterval = originalClearInterval;
+  }
+});

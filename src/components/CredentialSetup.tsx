@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,10 +18,37 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
   const [adminToken, setAdminToken] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const setupCompleteRef = useRef(onSetupComplete);
+
+  useEffect(() => {
+    setupCompleteRef.current = onSetupComplete;
+  }, [onSetupComplete]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadUserCredentials = async () => {
+      const { data: existing } = await supabase
+        .from('credentials')
+        .select('id')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (active && existing && existing.length > 0) {
+        setupCompleteRef.current(existing[0].id);
+      }
+    };
+
+    loadUserCredentials();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!instanceName || !subdomain || !token) {
       toast({
         title: "Erro",
@@ -34,6 +61,19 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
     setLoading(true);
 
     try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !authData?.user?.id) {
+        toast({
+          title: "Erro",
+          description: "Não foi possível identificar o usuário autenticado",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const userId = authData.user.id;
+
       // Insert credential into database
       const { data, error } = await supabase
         .from('credentials')
@@ -43,20 +83,29 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
           token: token,
           admin_token: adminToken || null,
           status: 'disconnected',
+          user_id: userId,
         })
         .select()
         .single();
 
       if (error) throw error;
 
+      const { error: membershipError } = await supabase
+        .from('credential_members')
+        .upsert({
+          credential_id: data.id,
+          user_id: userId,
+          role: 'owner',
+        }, { onConflict: 'credential_id,user_id' });
+
+      if (membershipError) {
+        console.error('Error adding credential owner membership:', membershipError);
+      }
+
       toast({
         title: "Sucesso",
         description: "Credenciais salvas com sucesso!",
       });
-
-      if (typeof window !== "undefined") {
-        window.localStorage?.setItem("activeCredentialId", data.id);
-      }
 
       onSetupComplete(data.id);
     } catch (error) {

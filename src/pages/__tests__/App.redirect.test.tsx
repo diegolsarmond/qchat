@@ -32,6 +32,7 @@ type ReactTestEnv = {
   render: (component: (props: any) => any, props: any) => Promise<void>;
   settle: () => Promise<void>;
   getOutput: () => any;
+  flush: () => Promise<void>;
 };
 
 const createSupabaseMock = (): SupabaseMock => {

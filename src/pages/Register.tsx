@@ -13,9 +13,37 @@ type PerformRegisterParams = {
   email: string;
   password: string;
   signUp: SignUp;
-  toast: (options: { title: string; description: string; variant?: string }) => void;
+  toast: ReturnType<typeof useToast>['toast'];
   navigate: (path: string) => void;
   setLoading: (loading: boolean) => void;
+};
+
+const NETWORK_ERROR_MESSAGE = "Não foi possível conectar ao servidor de autenticação";
+
+const resolveErrorMessage = (error: unknown): string => {
+  if (typeof error === "object" && error !== null) {
+    const hasMessage = "message" in error;
+    const message = hasMessage ? (error as { message?: unknown }).message : undefined;
+    const hasName = "name" in error;
+    const name = hasName ? (error as { name?: unknown }).name : undefined;
+
+    if (
+      (typeof message === "string" && message.toLowerCase().includes("failed to fetch")) ||
+      name === "TypeError"
+    ) {
+      return NETWORK_ERROR_MESSAGE;
+    }
+
+    if (typeof message === "string") {
+      return message;
+    }
+  }
+
+  if (typeof error === "string") {
+    return error.toLowerCase().includes("failed to fetch") ? NETWORK_ERROR_MESSAGE : error;
+  }
+
+  return "Erro inesperado";
 };
 
 export const performRegister = async ({
@@ -35,9 +63,10 @@ export const performRegister = async ({
     });
 
     if (error) {
+      const message = resolveErrorMessage(error);
       toast({
         title: "Erro ao cadastrar",
-        description: error.message,
+        description: message,
         variant: "destructive",
       });
       return false;
@@ -51,20 +80,7 @@ export const performRegister = async ({
     navigate("/login");
     return true;
   } catch (unknownError) {
-    const isNetworkError =
-      typeof unknownError === "object" &&
-      unknownError !== null &&
-      "name" in unknownError &&
-      unknownError.name === "TypeError";
-    const message =
-      isNetworkError
-        ? "Não foi possível conectar ao servidor de autenticação"
-        : typeof unknownError === "object" &&
-            unknownError !== null &&
-            "message" in unknownError &&
-            typeof (unknownError as { message?: unknown }).message === "string"
-          ? (unknownError as { message: string }).message
-          : "Erro inesperado";
+    const message = resolveErrorMessage(unknownError);
     toast({
       title: "Erro ao cadastrar",
       description: message,

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { CredentialSetup } from "@/components/CredentialSetup";
 import { QRCodeScanner } from "@/components/QRCodeScanner";
 import { ChatSidebar } from "@/components/ChatSidebar";
@@ -6,8 +6,14 @@ import { ChatArea } from "@/components/ChatArea";
 import { AssignChatDialog } from "@/components/AssignChatDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import type { User as SupabaseUser } from "@supabase/supabase-js";
-import { Chat, Message, User as WhatsAppUser, SendMessagePayload } from "@/types/whatsapp";
+import {
+  Chat,
+  ChatAttendanceStatus,
+  ChatFilter,
+  Message,
+  User as WhatsAppUser,
+  SendMessagePayload,
+} from "@/types/whatsapp";
 import { mergeFetchedMessages } from "@/lib/message-order";
 import {
   applyMessagePaginationUpdate,
@@ -19,8 +25,8 @@ const MESSAGE_PAGE_SIZE = 50;
 const formatTimestamp = (value: number | string | null | undefined) =>
   new Date(value ?? Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-const mapApiMessage = (m: any): Message => ({
-  id: m.id,
+export const mapApiMessage = (m: any): Message => ({
+  id: m.wa_message_id ?? m.id,
   chatId: m.chat_id,
   content: m.content || "",
   timestamp: formatTimestamp(m.message_timestamp),
@@ -34,20 +40,8 @@ const mapApiMessage = (m: any): Message => ({
   mediaBase64: m.media_base64,
 });
 
-type IndexProps = {
-  user: SupabaseUser;
-};
-
-const Index = ({ user }: IndexProps) => {
-  const [credentialId, setCredentialId] = useState<string | null>(() => {
-    if (typeof window !== "undefined") {
-      const stored = window.localStorage?.getItem("activeCredentialId");
-      if (stored) {
-        return stored;
-      }
-    }
-    return null;
-  });
+const Index = () => {
+  const [credentialId, setCredentialId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
@@ -57,17 +51,131 @@ const Index = ({ user }: IndexProps) => {
   const [chatToAssign, setChatToAssign] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [chatFilter, setChatFilter] = useState<ChatFilter>("all");
   const [messagePagination, setMessagePagination] = useState(() =>
     createInitialMessagePagination(MESSAGE_PAGE_SIZE)
   );
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const [isPrependingMessages, setIsPrependingMessages] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [credentialProfile, setCredentialProfile] = useState({
+    profileName: null as string | null,
+    phoneNumber: null as string | null,
+  });
   const { toast } = useToast();
+
+  const fetchCredentialProfile = useCallback(
+    async (id: string) => {
+      if (!id) {
+        setCredentialProfile({ profileName: null, phoneNumber: null });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('credentials')
+        .select('profile_name, phone_number')
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching credential profile:', error);
+        setCredentialProfile({ profileName: null, phoneNumber: null });
+        return;
+      }
+
+      setCredentialProfile({
+        profileName: data?.profile_name ?? null,
+        phoneNumber: data?.phone_number ?? null,
+      });
+    },
+    []
+  );
+
+  const clearCredentialProfile = useCallback(() => {
+    setCredentialProfile({ profileName: null, phoneNumber: null });
+  }, []);
+
+  const usersById = useMemo(() => {
+    const map: Record<string, string> = {};
+    users.forEach((u) => {
+      map[u.id] = u.name;
+    });
+    return map;
+  }, [users]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (credentialId) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const fetchCredential = async () => {
+      const { data, error } = await supabase
+        .from('credentials')
+        .select('id')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error('Error fetching credentials:', error);
+        toast({
+          title: "Erro",
+          description: "Falha ao carregar credenciais",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (active) {
+        const existing = data && data.length > 0 ? data[0].id : null;
+        setCredentialId(existing);
+      }
+    };
+
+    fetchCredential();
+
+    return () => {
+      active = false;
+    };
+  }, [credentialId, toast]);
+
+  useEffect(() => {
+    if (!selectedChat) {
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.innerWidth < 768) {
+      setShowSidebar(false);
+    }
+  }, [selectedChat]);
+
+  const chatsWithAssignedUsers = useMemo(() =>
+    chats.map((chat) => {
+      const assignedIds = Array.isArray(chat.assignedTo)
+        ? chat.assignedTo
+        : chat.assignedTo
+        ? [chat.assignedTo]
+        : [];
+      const assignedUserNames = assignedIds
+        .map((id) => usersById[id])
+        .filter((name): name is string => Boolean(name));
+
+      return {
+        ...chat,
+        assignedUserNames: assignedUserNames.length > 0 ? assignedUserNames : undefined,
+      };
+    }),
+  [chats, usersById]);
 
   // Fetch users on mount
   useEffect(() => {
-    if (!user) return;
-
     const fetchUsers = async () => {
       const { data } = await supabase.from('users').select('*');
       if (data) {
@@ -80,7 +188,7 @@ const Index = ({ user }: IndexProps) => {
       }
     };
     fetchUsers();
-  }, [user]);
+  }, []);
 
   // Fetch chats when connected and setup realtime
   useEffect(() => {
@@ -105,6 +213,74 @@ const Index = ({ user }: IndexProps) => {
         )
         .subscribe();
 
+      const handleMessageChange = (payload: any) => {
+        console.log('Message change:', payload);
+        const mappedMessage = mapApiMessage(payload.new as any);
+        const previewContent = mappedMessage.messageType === 'text'
+          ? mappedMessage.content
+          : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
+        const rawTimestamp = payload.new?.message_timestamp ?? null;
+        const messageTimestampMs = rawTimestamp ? new Date(rawTimestamp).getTime() : null;
+
+        setChats(prevChats => prevChats.map(chat =>
+          {
+            if (chat.id !== mappedMessage.chatId) {
+              return chat;
+            }
+
+            const shouldUpdatePreview = (() => {
+              if (payload.eventType === 'INSERT') {
+                if (messageTimestampMs === null) {
+                  return true;
+                }
+                return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
+              }
+
+              if (payload.eventType === 'UPDATE') {
+                if (messageTimestampMs === null) {
+                  return false;
+                }
+                return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
+              }
+
+              return false;
+            })();
+
+            if (!shouldUpdatePreview) {
+              return chat;
+            }
+
+            return {
+              ...chat,
+              lastMessage: previewContent,
+              timestamp: mappedMessage.timestamp,
+              lastMessageAt: messageTimestampMs ?? chat.lastMessageAt ?? null,
+            };
+          }
+        ));
+
+        if (selectedChat && payload.new.chat_id === selectedChat.id) {
+          let appended = false;
+          setMessages(prev => {
+            const index = prev.findIndex(message => message.id === mappedMessage.id);
+            if (index === -1) {
+              appended = true;
+              return [...prev, mappedMessage];
+            }
+            const next = [...prev];
+            next[index] = { ...next[index], ...mappedMessage };
+            return next;
+          });
+
+          if (appended) {
+            setMessagePagination(prev => ({
+              ...prev,
+              offset: prev.offset + 1,
+            }));
+          }
+        }
+      };
+
       const messagesChannel = supabase
         .channel('messages-changes')
         .on(
@@ -112,19 +288,20 @@ const Index = ({ user }: IndexProps) => {
           {
             event: 'INSERT',
             schema: 'public',
-            table: 'messages'
+            table: 'messages',
+            filter: `credential_id=eq.${credentialId}`
           },
-          (payload) => {
-            console.log('New message:', payload);
-            if (selectedChat && payload.new.chat_id === selectedChat.id) {
-              const newMsg = payload.new as any;
-              setMessages(prev => [...prev, mapApiMessage(newMsg)]);
-              setMessagePagination(prev => ({
-                ...prev,
-                offset: prev.offset + 1,
-              }));
-            }
-          }
+          handleMessageChange
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages',
+            filter: `credential_id=eq.${credentialId}`
+          },
+          handleMessageChange
         )
         .subscribe();
 
@@ -134,6 +311,34 @@ const Index = ({ user }: IndexProps) => {
       };
     }
   }, [isConnected, credentialId, selectedChat]);
+
+  const deriveAttendanceStatus = (chat: any): Chat["attendanceStatus"] => {
+    const source =
+      (typeof chat.attendance_status === "string" && chat.attendance_status) ||
+      (typeof chat.attendanceStatus === "string" && chat.attendanceStatus) ||
+      (typeof chat.status === "string" && chat.status) ||
+      "";
+
+    const normalized = source.toLowerCase();
+
+    if (["finished", "finalized", "closed"].includes(normalized)) {
+      return "finished";
+    }
+
+    if (["in_service", "in progress", "in_progress", "active"].includes(normalized)) {
+      return "in_service";
+    }
+
+    if (["waiting", "pending", "queued"].includes(normalized)) {
+      return chat.assigned_to || chat.assignedTo ? "in_service" : "waiting";
+    }
+
+    if (chat.assigned_to || chat.assignedTo) {
+      return "in_service";
+    }
+
+    return "waiting";
+  };
 
   const fetchChats = async () => {
     if (!credentialId) return;
@@ -147,18 +352,24 @@ const Index = ({ user }: IndexProps) => {
       if (error) throw error;
 
       if (data?.chats) {
-        setChats(data.chats.map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          lastMessage: c.last_message || '',
-          timestamp: c.last_message_timestamp 
-            ? new Date(c.last_message_timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-            : '',
-          unread: c.unread_count || 0,
-          avatar: c.avatar || undefined,
-          isGroup: c.is_group || false,
-          assignedTo: c.assigned_to || undefined,
-        })));
+        setChats(data.chats.map((c: any) => {
+          const lastMessageDate = c.last_message_timestamp ? new Date(c.last_message_timestamp) : null;
+
+          return {
+            id: c.id,
+            name: c.name,
+            lastMessage: c.last_message || '',
+            timestamp: lastMessageDate
+              ? lastMessageDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+              : '',
+            lastMessageAt: lastMessageDate ? lastMessageDate.getTime() : null,
+            unread: c.unread_count || 0,
+            avatar: c.avatar || undefined,
+            isGroup: c.is_group || false,
+            assignedTo: c.assigned_to || undefined,
+            attendanceStatus: deriveAttendanceStatus(c),
+          };
+        }));
       }
     } catch (error) {
       console.error('Error fetching chats:', error);
@@ -238,17 +449,96 @@ const Index = ({ user }: IndexProps) => {
     }
   };
 
-  const handleSetupComplete = (id: string) => {
-    setCredentialId(id);
-  };
+  const handleSetupComplete = useCallback(
+    (id: string) => {
+      setCredentialId(id);
+      clearCredentialProfile();
+    },
+    [clearCredentialProfile]
+  );
 
   const handleConnected = () => {
     setIsConnected(true);
+    if (credentialId) {
+      fetchCredentialProfile(credentialId);
+    }
     toast({
       title: "Conectado!",
       description: "WhatsApp conectado com sucesso",
     });
   };
+
+  const handleDisconnect = async () => {
+    if (!credentialId || isDisconnecting) {
+      return;
+    }
+
+    setIsDisconnecting(true);
+
+    try {
+      const { error } = await supabase.functions.invoke('uaz-disconnect-instance', {
+        body: { credentialId },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setIsConnected(false);
+      setSelectedChat(null);
+      setChats([]);
+      setMessages([]);
+      setAssignDialogOpen(false);
+      setChatToAssign(null);
+      setMessagePagination(createInitialMessagePagination(MESSAGE_PAGE_SIZE));
+      setShowSidebar(true);
+      setIsLoadingMoreMessages(false);
+      setIsPrependingMessages(false);
+
+      if (typeof window !== 'undefined') {
+        window.localStorage?.removeItem("activeCredentialId");
+      }
+
+      toast({
+        title: "Desconectado",
+        description: "WhatsApp desconectado com sucesso",
+      });
+    } catch (error) {
+      console.error('Error disconnecting instance:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao desconectar",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDisconnecting(false);
+    }
+  };
+  const handleConnectionStatusChange = useCallback(
+    (status?: string | null) => {
+      if (!credentialId) {
+        clearCredentialProfile();
+        return;
+      }
+
+      if (status === 'connected') {
+        fetchCredentialProfile(credentialId);
+        return;
+      }
+
+      if (status === 'disconnected') {
+        clearCredentialProfile();
+        setIsConnected(false);
+      }
+    },
+    [credentialId, clearCredentialProfile, fetchCredentialProfile]
+  );
+
+  useEffect(() => {
+    if (isConnected && credentialId) {
+      fetchCredentialProfile(credentialId);
+    }
+  }, [isConnected, credentialId, fetchCredentialProfile]);
 
   const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
@@ -283,32 +573,81 @@ const Index = ({ user }: IndexProps) => {
   const handleSendMessage = async (payload: SendMessagePayload) => {
     if (!selectedChat || !credentialId) return;
 
+    const now = Date.now();
+    const timestamp = new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    let messageContent = '';
+
+    if (payload.messageType === 'text') {
+      messageContent = payload.content;
+    } else if (payload.messageType === 'media') {
+      messageContent = payload.caption || `[${payload.mediaType || 'mídia'}]`;
+    } else {
+      const fallbackCoordinates =
+        typeof payload.latitude === 'number' && typeof payload.longitude === 'number'
+          ? `${payload.latitude}, ${payload.longitude}`
+          : '';
+      messageContent = payload.locationName || payload.content || fallbackCoordinates;
+    }
+    const fallbackId = () => {
+      if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+      }
+      return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    };
+
+    let messageId = payload.isPrivate ? fallbackId() : '';
+
     try {
-      const { data, error } = await supabase.functions.invoke('uaz-send-message', {
-        body: {
-          credentialId,
-          chatId: selectedChat.id,
-          content: payload.content,
-          messageType: payload.messageType,
-          mediaType: payload.mediaType,
-          mediaUrl: payload.mediaUrl,
-          mediaBase64: payload.mediaBase64,
-          documentName: payload.documentName,
+      if (payload.isPrivate) {
+        const { error } = await supabase.from('messages').insert([{
+          chat_id: selectedChat.id,
+          credential_id: credentialId,
+          content: messageContent,
+          message_type: payload.messageType,
+          media_type: payload.mediaType,
+          media_url: payload.mediaUrl,
+          media_base64: payload.mediaBase64,
           caption: payload.caption,
-        }
-      });
+          document_name: payload.documentName,
+          from_me: true,
+          is_private: true,
+          message_timestamp: Date.now(),
+          wa_message_id: messageId,
+        }]);
 
-      if (error) throw error;
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.functions.invoke('uaz-send-message', {
+          body: {
+            credentialId,
+            chatId: selectedChat.id,
+            content: payload.content,
+            messageType: payload.messageType,
+            mediaType: payload.mediaType,
+            mediaUrl: payload.mediaUrl,
+            mediaBase64: payload.mediaBase64,
+            documentName: payload.documentName,
+            caption: payload.caption,
+            interactive: payload.interactive,
+            contactName: payload.contactName,
+            contactPhone: payload.contactPhone,
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+            locationName: payload.locationName,
+          }
+        });
 
-      const messageContent = payload.messageType === 'text'
-        ? payload.content
-        : payload.caption || `[${payload.mediaType || 'mídia'}]`;
+        if (error) throw error;
+        messageId = data.messageId;
+      }
+
+      const waMessageId = messageId || fallbackId();
 
       const newMessage: Message = {
-        id: data.messageId,
+        id: waMessageId,
         chatId: selectedChat.id,
         content: messageContent,
-        timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        timestamp,
         from: 'me',
         status: 'sent',
         messageType: payload.messageType,
@@ -317,6 +656,11 @@ const Index = ({ user }: IndexProps) => {
         documentName: payload.documentName,
         mediaUrl: payload.mediaUrl,
         mediaBase64: payload.mediaBase64,
+        contactName: payload.contactName,
+        contactPhone: payload.contactPhone,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        locationName: payload.locationName,
       };
 
       setMessages(prev => [...prev, newMessage]);
@@ -325,16 +669,15 @@ const Index = ({ user }: IndexProps) => {
         offset: prev.offset + 1,
       }));
 
-      // Update chat last message
-      setChats(chats.map(c =>
+      setChats(prevChats => prevChats.map(c =>
         c.id === selectedChat.id
-          ? { ...c, lastMessage: messageContent, timestamp: newMessage.timestamp }
+          ? { ...c, lastMessage: messageContent, timestamp: newMessage.timestamp, lastMessageAt: now }
           : c
       ));
 
       toast({
-        title: "Enviado",
-        description: "Mensagem enviada com sucesso",
+        title: payload.isPrivate ? "Salvo" : "Enviado",
+        description: payload.isPrivate ? "Mensagem privada registrada" : "Mensagem enviada com sucesso",
       });
     } catch (error) {
       console.error('Error sending message:', error);
@@ -352,19 +695,58 @@ const Index = ({ user }: IndexProps) => {
   };
 
   const handleAssignToUser = async (userId: string) => {
-    if (!chatToAssign) return;
+    if (!chatToAssign || !credentialId) return;
+
+    const previousAssigned = chats.find(c => c.id === chatToAssign)?.assignedTo || null;
 
     try {
       const { error } = await supabase
         .from('chats')
-        .update({ assigned_to: userId })
+        .update({ assigned_to: userId, attendance_status: 'in_service' })
         .eq('id', chatToAssign);
 
       if (error) throw error;
 
-      setChats(chats.map(c => 
-        c.id === chatToAssign ? { ...c, assignedTo: userId } : c
-      ));
+      const { error: membershipError } = await supabase
+        .from('credential_members')
+        .upsert({
+          credential_id: credentialId,
+          user_id: userId,
+          role: 'agent',
+        }, { onConflict: 'credential_id,user_id' });
+
+      if (membershipError) throw membershipError;
+
+      if (previousAssigned && previousAssigned !== userId) {
+        const { count: remainingAssignments } = await supabase
+          .from('chats')
+          .select('id', { count: 'exact', head: true })
+          .eq('credential_id', credentialId)
+          .eq('assigned_to', previousAssigned);
+
+        if ((remainingAssignments ?? 0) === 0) {
+          await supabase
+            .from('credential_members')
+            .delete()
+            .eq('credential_id', credentialId)
+            .eq('user_id', previousAssigned)
+            .eq('role', 'agent');
+        }
+      }
+
+      setChats(prevChats =>
+        prevChats.map(c =>
+          c.id === chatToAssign
+            ? { ...c, assignedTo: userId, attendanceStatus: "in_service" as ChatAttendanceStatus }
+            : c
+        )
+      );
+
+      setSelectedChat(prevSelected =>
+        prevSelected && prevSelected.id === chatToAssign
+          ? { ...prevSelected, assignedTo: userId, attendanceStatus: "in_service" }
+          : prevSelected
+      );
 
       toast({
         title: "Atribuído",
@@ -382,7 +764,49 @@ const Index = ({ user }: IndexProps) => {
     }
   };
 
-  const currentChatMessages = messages.filter(m => m.chatId === selectedChat?.id);
+  const handleFinishAttendance = async (chatId: string) => {
+    try {
+      const { error } = await supabase
+        .from('chats')
+        .update({ attendance_status: 'finished', assigned_to: null })
+        .eq('id', chatId);
+
+      if (error) throw error;
+
+      setChats(prevChats =>
+        prevChats.map(chat =>
+          chat.id === chatId
+            ? { ...chat, attendanceStatus: 'finished', assignedTo: undefined }
+            : chat
+        )
+      );
+
+      setSelectedChat(prevSelected =>
+        prevSelected && prevSelected.id === chatId
+          ? { ...prevSelected, attendanceStatus: 'finished', assignedTo: undefined }
+          : prevSelected
+      );
+
+      toast({
+        title: "Finalizado",
+        description: "Atendimento finalizado com sucesso",
+      });
+    } catch (error) {
+      console.error('Error finishing attendance:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao finalizar atendimento",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const currentChatMessages = useMemo(() => {
+    if (!selectedChat) {
+      return [];
+    }
+    return messages.filter(m => m.chatId === selectedChat.id);
+  }, [messages, selectedChat]);
 
   const handleLoadMoreMessages = () => {
     if (!selectedChat || !messagePagination.hasMore || isLoadingMoreMessages) {
@@ -397,7 +821,13 @@ const Index = ({ user }: IndexProps) => {
   }
 
   if (!isConnected) {
-    return <QRCodeScanner credentialId={credentialId} onConnected={handleConnected} />;
+    return (
+      <QRCodeScanner
+        credentialId={credentialId}
+        onConnected={handleConnected}
+        onStatusChange={handleConnectionStatusChange}
+      />
+    );
   }
 
   // Main WhatsApp interface
@@ -405,24 +835,32 @@ const Index = ({ user }: IndexProps) => {
     <>
       <div className="flex h-screen overflow-hidden flex-col md:flex-row">
         <ChatSidebar
-          chats={chats}
+          chats={chatsWithAssignedUsers}
           selectedChat={selectedChat}
           onSelectChat={handleSelectChat}
           onAssignChat={handleAssignChat}
           showSidebar={showSidebar}
           onToggleSidebar={() => setShowSidebar(false)}
+          activeFilter={chatFilter}
+          onFilterChange={setChatFilter}
+          onDisconnect={handleDisconnect}
+          isDisconnecting={isDisconnecting}
+          profileName={credentialProfile.profileName}
+          phoneNumber={credentialProfile.phoneNumber}
         />
         <ChatArea
           chat={selectedChat}
           messages={currentChatMessages}
           onSendMessage={handleSendMessage}
           onAssignChat={handleAssignChat}
+          onFinishAttendance={handleFinishAttendance}
           onLoadMoreMessages={handleLoadMoreMessages}
           hasMoreMessages={messagePagination.hasMore}
           isLoadingMoreMessages={isLoadingMoreMessages}
           isPrependingMessages={isPrependingMessages}
           showSidebar={showSidebar}
           onShowSidebar={() => setShowSidebar(true)}
+          credentialId={credentialId}
         />
       </div>
 

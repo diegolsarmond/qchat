@@ -7,19 +7,25 @@ import { useToast } from "@/hooks/use-toast";
 interface QRCodeScannerProps {
   credentialId: string;
   onConnected: () => void;
+  onStatusChange?: (status?: string | null) => void;
 }
 
 
-export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps) => {
+export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRCodeScannerProps) => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string>("Conectando ao WhatsApp...");
   const [instanceName, setInstanceName] = useState<string>("");
+  const [pairingCode, setPairingCode] = useState<string>("");
+  const [uazSubdomain, setUazSubdomain] = useState<string>("");
+  const [uazToken, setUazToken] = useState<string>("");
   const { toast } = useToast();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFetchingRef = useRef(false);
 
-  const fetchQRCode = async () => {
+  const fetchQRCode = async (
+    credentialData?: { subdomain: string; token: string }
+  ) => {
     if (isFetchingRef.current) {
       return;
     }
@@ -29,21 +35,100 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
     try {
       setStatus("Verificando status da conexão...");
 
-      const { data, error } = await supabase.functions.invoke('uaz-get-qr', {
-        body: { credentialId }
+      const subdomain = credentialData?.subdomain || uazSubdomain;
+      const token = credentialData?.token || uazToken;
+
+      if (!subdomain || !token) {
+        setLoading(true);
+        setStatus("Carregando credenciais...");
+        return;
+      }
+
+      const response = await fetch(`https://${subdomain}.uazapi.com/instance/status`, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          token,
+        },
       });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(`UAZ API respondeu com status ${response.status}`);
+      }
 
-      console.log('Status da instância:', data);
+      const responseText = await response.text();
+      type InstanceData = {
+        status?: { connected?: boolean } | string | null;
+        instance?: {
+          status?: string | null;
+          qrcode?: string | null;
+          profileName?: string | null;
+          owner?: string | null;
+          paircode?: string | null;
+        } | null;
+      };
 
-      // Se já está conectado, redireciona imediatamente
-      if (data.connected || data.status === 'connected') {
+      let instanceData: InstanceData = {};
+
+      if (responseText) {
+        try {
+          instanceData = JSON.parse(responseText) as InstanceData;
+        } catch (parseError) {
+          throw new Error('Resposta inválida da UAZ API');
+        }
+      }
+
+      console.log('Status da instância:', instanceData);
+
+      const connected =
+        (typeof instanceData.status === 'object' && instanceData.status?.connected === true) ||
+        instanceData.instance?.status === 'connected' ||
+        instanceData.status === 'connected';
+
+      const instanceStatus =
+        typeof instanceData.instance?.status === 'string'
+          ? instanceData.instance.status
+          : typeof instanceData.status === 'string'
+            ? instanceData.status
+            : connected
+              ? 'connected'
+              : 'disconnected';
+
+      onStatusChange?.(connected ? 'connected' : instanceStatus);
+
+      const updateData: Record<string, any> = {
+        status: instanceStatus || 'disconnected',
+        updated_at: new Date().toISOString(),
+      };
+
+      if (instanceData.instance?.qrcode) {
+        updateData.qr_code = instanceData.instance.qrcode;
+      }
+
+      if (instanceData.instance?.profileName) {
+        updateData.profile_name = instanceData.instance.profileName;
+      }
+
+      if (instanceData.instance?.owner) {
+        updateData.phone_number = instanceData.instance.owner;
+      }
+
+      const { error: updateError } = await supabase
+        .from('credentials')
+        .update(updateData)
+        .eq('id', credentialId);
+
+      if (updateError) {
+        console.error('Erro ao atualizar credencial:', updateError);
+      }
+
+      if (connected) {
         setStatus("Já conectado!");
+        setPairingCode("");
         setLoading(false);
         toast({
           title: "Conectado",
-          description: `WhatsApp já conectado: ${data.phoneNumber || 'número detectado'}`,
+          description: `WhatsApp já conectado: ${instanceData.instance?.owner || 'número detectado'}`,
         });
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
@@ -53,16 +138,26 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
         return;
       }
 
-      // Se está no processo de conexão e tem QR code
-      if (data.qrCode) {
-        setQrCode(data.qrCode);
+      if (instanceData.instance?.paircode) {
+        setPairingCode(instanceData.instance.paircode);
+        setQrCode(null);
+        setLoading(false);
+        setStatus("Digite o código de pareamento no WhatsApp");
+        return;
+      }
+
+      setPairingCode("");
+
+      if (instanceData.instance?.qrcode) {
+        setQrCode(instanceData.instance.qrcode ?? null);
         setLoading(false);
         setStatus("Escaneie o QR Code com seu WhatsApp");
         return;
       }
 
-      // Se está aguardando QR code
-      if (data.status === 'connecting' || data.status === 'disconnected') {
+      if (instanceStatus === 'connecting' || instanceStatus === 'disconnected') {
+        setQrCode(null);
+        setPairingCode("");
         setLoading(true);
         setStatus("Gerando QR Code...");
         return;
@@ -71,7 +166,7 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
       // Caso não identificado
       setLoading(false);
       setStatus("Status desconhecido. Tente novamente.");
-      
+
     } catch (error) {
       console.error('Error fetching connection status:', error);
       setLoading(false);
@@ -81,6 +176,7 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
         description: "Falha ao verificar status da conexão",
         variant: "destructive",
       });
+      onStatusChange?.('error');
     }
     finally {
       isFetchingRef.current = false;
@@ -88,31 +184,50 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
   };
 
   useEffect(() => {
-    // Fetch credential info
+    let isActive = true;
+
     const fetchCredential = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('credentials')
-        .select('instance_name')
+        .select('instance_name, subdomain, token')
         .eq('id', credentialId)
         .single();
-      
-      if (data) {
-        setInstanceName(data.instance_name);
+
+      if (!isActive) {
+        return;
       }
+
+      if (error || !data) {
+        console.error('Erro ao carregar credencial:', error);
+        setLoading(false);
+        setStatus("Credencial não encontrada");
+        onStatusChange?.('error');
+        return;
+      }
+
+      setInstanceName(data.instance_name);
+      setUazSubdomain(data.subdomain);
+      setUazToken(data.token);
+
+      await fetchQRCode({ subdomain: data.subdomain, token: data.token });
+
+      if (!isActive) {
+        return;
+      }
+
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+
+      intervalRef.current = setInterval(() => {
+        fetchQRCode();
+      }, 3000);
     };
 
     fetchCredential();
-    
-    // Primeira verificação imediata
-    fetchQRCode();
-
-    // Poll for connection status apenas se não estiver conectado
-    // Verifica a cada 3 segundos
-    intervalRef.current = setInterval(() => {
-      fetchQRCode();
-    }, 3000);
 
     return () => {
+      isActive = false;
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -160,6 +275,17 @@ export const QRCodeScanner = ({ credentialId, onConnected }: QRCodeScannerProps)
                   <li>Toque em Conectar aparelho</li>
                   <li>Aponte seu celular para esta tela</li>
                 </ol>
+              </div>
+            )}
+
+            {!loading && pairingCode && (
+              <div className="space-y-3 w-full text-center">
+                <div className="text-3xl font-semibold tracking-widest text-primary">
+                  {pairingCode.split("").join(" ")}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Digite este código no seu WhatsApp para concluir a conexão
+                </p>
               </div>
             )}
           </div>

@@ -8,6 +8,7 @@ import ts from "typescript";
 
 const createReactStub = () => {
   const state = [];
+  const cleanups = [];
   let hookIndex = 0;
 
   const getInitialValue = (value) => (typeof value === "function" ? value() : value);
@@ -23,7 +24,12 @@ const createReactStub = () => {
       };
       return [state[index], setState];
     },
-    useEffect() {},
+    useEffect(callback) {
+      const cleanup = callback();
+      if (typeof cleanup === "function") {
+        cleanups.push(cleanup);
+      }
+    },
   };
 
   react.__render = (Component, props) => {
@@ -32,6 +38,13 @@ const createReactStub = () => {
   };
 
   react.__getState = () => state;
+
+  react.__runCleanups = () => {
+    while (cleanups.length) {
+      const cleanup = cleanups.pop();
+      cleanup();
+    }
+  };
 
   return react;
 };
@@ -72,10 +85,41 @@ const loadIndexPage = (reactStub, overrides = {}) => {
     functions: {
       invoke: async () => ({ data: {}, error: null }),
     },
-    from: () => ({
-      select: () => Promise.resolve({ data: [], error: null }),
-      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
-    }),
+    from: (table) => {
+      if (table === "credentials") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: async () => ({ data: [], error: null }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "users") {
+        return {
+          select: async () => ({ data: [], error: null }),
+        };
+      }
+      if (table === "messages") {
+        return {
+          insert: async () => ({ data: null, error: null }),
+        };
+      }
+      if (table === "chats") {
+        return {
+          update: () => ({
+            eq: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          }),
+        };
+      }
+      return {
+        select: async () => ({ data: [], error: null }),
+      };
+    },
     channel: () => ({
       on() {
         return this;
@@ -152,70 +196,149 @@ const loadIndexPage = (reactStub, overrides = {}) => {
   return { module: module.exports, stubs: { credentialSetup, qrCodeScanner } };
 };
 
-test("Index mantém credentialId após reload", () => {
-  const storage = (() => {
-    const map = new Map();
-    return {
-      getItem: (key) => (map.has(key) ? map.get(key) : null),
-      setItem: (key, value) => {
-        map.set(key, String(value));
+test("Index mantém credentialId após reload", async () => {
+  const credentialQueries = [];
+  const reactStub = createReactStub();
+  const credentialComponent = createStubComponent("CredentialSetup");
+  const qrComponent = createStubComponent("QRCodeScanner");
+
+  const supabaseStub = {
+    functions: {
+      invoke: async () => ({ data: {}, error: null }),
+    },
+    from: (table) => {
+      if (table === "credentials") {
+        return {
+          select: () => ({
+            eq: (column, value) => {
+              credentialQueries.push({ column, value });
+              return {
+                order: () => ({
+                  limit: async () => ({ data: [], error: null }),
+                }),
+              };
+            },
+          }),
+        };
+      }
+      if (table === "users") {
+        return {
+          select: async () => ({ data: [], error: null }),
+        };
+      }
+      if (table === "chats") {
+        return {
+          update: () => ({
+            eq: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "messages") {
+        return {
+          insert: async () => ({ data: null, error: null }),
+        };
+      }
+      return {
+        select: async () => ({ data: [], error: null }),
+      };
+    },
+    channel: () => ({
+      on() {
+        return this;
       },
-      removeItem: (key) => {
-        map.delete(key);
+      subscribe() {
+        return this;
       },
-      clear: () => {
-        map.clear();
+    }),
+    removeChannel() {},
+  };
+
+  const { module, stubs } = loadIndexPage(reactStub, {
+    credentialSetup: credentialComponent,
+    qrCodeScanner: qrComponent,
+    supabase: supabaseStub,
+  });
+  const Index = module.default ?? module;
+  const firstRender = reactStub.__render(Index, { user: { id: "user" } });
+  assert.equal(firstRender.type, stubs.credentialSetup);
+
+  firstRender.props.onSetupComplete("cred-1");
+
+  const secondRender = reactStub.__render(Index, { user: { id: "user" } });
+  assert.equal(secondRender.type, stubs.qrCodeScanner);
+  assert.equal(reactStub.__getState()[0], "cred-1");
+  assert.deepEqual(credentialQueries, [{ column: "user_id", value: "user" }]);
+
+  const reloadQueries = [];
+  const reactStubReload = createReactStub();
+  const reloadCredentialStub = createStubComponent("CredentialSetup");
+  const reloadQrStub = createStubComponent("QRCodeScanner");
+  const supabaseReloadStub = {
+    functions: {
+      invoke: async () => ({ data: {}, error: null }),
+    },
+    from: (table) => {
+      if (table === "credentials") {
+        return {
+          select: () => ({
+            eq: (column, value) => {
+              reloadQueries.push({ column, value });
+              return {
+                order: () => ({
+                  limit: async () => ({ data: [{ id: "cred-1" }], error: null }),
+                }),
+              };
+            },
+          }),
+        };
+      }
+      if (table === "users") {
+        return {
+          select: async () => ({ data: [], error: null }),
+        };
+      }
+      if (table === "chats") {
+        return {
+          update: () => ({
+            eq: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "messages") {
+        return {
+          insert: async () => ({ data: null, error: null }),
+        };
+      }
+      return {
+        select: async () => ({ data: [], error: null }),
+      };
+    },
+    channel: () => ({
+      on() {
+        return this;
       },
-    };
-  })();
+      subscribe() {
+        return this;
+      },
+    }),
+    removeChannel() {},
+  };
 
-  const originalWindow = global.window;
-  const originalLocalStorage = global.localStorage;
-
-  global.window = { localStorage: storage, innerWidth: 1024 };
-  global.localStorage = storage;
-
-  try {
-    const reactStub = createReactStub();
-    const credentialComponent = createStubComponent("CredentialSetup");
-    const qrComponent = createStubComponent("QRCodeScanner");
-    const { module, stubs } = loadIndexPage(reactStub, {
-      credentialSetup: credentialComponent,
-      qrCodeScanner: qrComponent,
-    });
-    const Index = module.default ?? module;
-    const firstRender = reactStub.__render(Index, { user: { id: "user" } });
-    assert.equal(firstRender.type, stubs.credentialSetup);
-
-    storage.setItem("activeCredentialId", "cred-1");
-    firstRender.props.onSetupComplete("cred-1");
-
-    const secondRender = reactStub.__render(Index, { user: { id: "user" } });
-    assert.equal(secondRender.type, stubs.qrCodeScanner);
-    assert.equal(reactStub.__getState()[0], "cred-1");
-    assert.equal(storage.getItem("activeCredentialId"), "cred-1");
-
-    const reactStubReload = createReactStub();
-    const reloadCredentialStub = createStubComponent("CredentialSetup");
-    const reloadQrStub = createStubComponent("QRCodeScanner");
-    const { module: moduleReload, stubs: reloadStubs } = loadIndexPage(reactStubReload, {
-      credentialSetup: reloadCredentialStub,
-      qrCodeScanner: reloadQrStub,
-    });
-    const IndexReload = moduleReload.default ?? moduleReload;
-    const reloadRender = reactStubReload.__render(IndexReload, { user: { id: "user" } });
-    assert.equal(reloadRender.props.credentialId, "cred-1");
-    assert.equal(reactStubReload.__getState()[0], "cred-1");
-  } finally {
-    if (originalWindow === undefined) {
-      delete global.window;
-    } else {
-      global.window = originalWindow;
-    }
-    if (originalLocalStorage === undefined) {
-      delete global.localStorage;
-    } else {
-      global.localStorage = originalLocalStorage;
-    }
-  }
+  const { module: moduleReload, stubs: reloadStubs } = loadIndexPage(reactStubReload, {
+    credentialSetup: reloadCredentialStub,
+    qrCodeScanner: reloadQrStub,
+    supabase: supabaseReloadStub,
+  });
+  const IndexReload = moduleReload.default ?? moduleReload;
+  reactStubReload.__render(IndexReload, { user: { id: "user" } });
+  await Promise.resolve();
+  await Promise.resolve();
+  const reloadRender = reactStubReload.__render(IndexReload, { user: { id: "user" } });
+  assert.equal(reloadRender.type, reloadStubs.qrCodeScanner);
+  assert.equal(reactStubReload.__getState()[0], "cred-1");
+  assert.deepEqual(reloadQueries, [{ column: "user_id", value: "user" }]);
 });

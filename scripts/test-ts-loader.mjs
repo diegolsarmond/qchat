@@ -51,6 +51,14 @@ export async function resolve(specifier, context, defaultResolve) {
     }
   }
 
+  if (specifier === "@testing-library/react") {
+    const basePath = join(process.cwd(), "tests", "test-utils", "testing-library-react");
+    const resolved = await resolveWithExtensions(basePath);
+    if (resolved) {
+      return { url: resolved, shortCircuit: true };
+    }
+  }
+
   if (specifier.startsWith(".")) {
     const parentUrl = context.parentURL;
     if (parentUrl) {

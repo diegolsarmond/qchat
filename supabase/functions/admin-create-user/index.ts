@@ -9,6 +9,7 @@ const corsHeaders = {
 type AdminCreateUserPayload = {
   email?: unknown;
   password?: unknown;
+  name?: unknown;
 };
 
 serve(async (req) => {
@@ -18,9 +19,13 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");
-    const accessToken = typeof authHeader === "string" && authHeader.toLowerCase().startsWith("bearer ")
+    let accessToken = typeof authHeader === "string" && authHeader.toLowerCase().startsWith("bearer ")
       ? authHeader.slice(7).trim()
       : null;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? null;
+    if (anonKey && accessToken === anonKey) {
+      accessToken = null;
+    }
 
     if (!accessToken) {
       return new Response(
@@ -35,6 +40,7 @@ serve(async (req) => {
     const payload = (await req.json()) as AdminCreateUserPayload;
     const email = typeof payload.email === "string" ? payload.email : null;
     const password = typeof payload.password === "string" ? payload.password : null;
+    const nameInput = typeof payload.name === "string" ? payload.name.trim() : "";
 
     if (!email || !password) {
       return new Response(
@@ -111,8 +117,78 @@ serve(async (req) => {
       );
     }
 
+    const createdUserId = data.user?.id ?? null;
+
+    if (createdUserId) {
+      const { data: adminMemberships, error: adminMembershipError } = await supabaseClient
+        .from("credential_members")
+        .select("credential_id")
+        .eq("user_id", authData.user.id);
+
+      if (adminMembershipError) {
+        console.error("[Admin Create User] Failed to load admin memberships", adminMembershipError.message);
+      } else if (adminMemberships && adminMemberships.length > 0) {
+        const upsertPayload = adminMemberships.map((membership) => ({
+          credential_id: membership.credential_id,
+          user_id: createdUserId,
+          role: "agent",
+        }));
+
+        const { error: upsertError } = await supabaseClient
+          .from("credential_members")
+          .upsert(upsertPayload, { onConflict: "credential_id,user_id" });
+
+        if (upsertError) {
+          console.error("[Admin Create User] Failed to add user to credential members", upsertError.message);
+        }
+      }
+    const userId = data.user?.id ?? null;
+
+    if (!userId) {
+      console.error("[Admin Create User] Missing user ID from auth response");
+      return new Response(
+        JSON.stringify({ error: "Falha ao recuperar identificador do usuário" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const fallbackName = (() => {
+      const localPart = email.split("@")[0]?.trim() ?? "";
+      return localPart || "Agente";
+    })();
+    const finalName = nameInput || fallbackName;
+
+    const { error: upsertError } = await supabaseClient.from("users").upsert({
+      id: userId,
+      email,
+      name: finalName,
+    });
+
+    if (upsertError) {
+      console.error("[Admin Create User] Failed to upsert user", upsertError.message);
+      const { error: deleteError } = await supabaseClient.auth.admin.deleteUser(userId);
+
+      if (deleteError) {
+        console.error(
+          "[Admin Create User] Failed to rollback auth user after upsert failure",
+          deleteError.message,
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ error: upsertError.message }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
     return new Response(
-      JSON.stringify({ success: true, userId: data.user?.id ?? null }),
+      JSON.stringify({ success: true, userId }),
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

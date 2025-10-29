@@ -45,24 +45,26 @@ const formatStats = (usersCount: number, chatsCount: number): AdminStat[] => [
 type PerformAdminUserCreationParams = {
   email: string;
   password: string;
-  createUser: (payload: { email: string; password: string }) => Promise<{
+  name?: string;
+  createUser: (payload: { email: string; password: string; name?: string }) => Promise<{
     error: { message: string } | null;
   }>;
   fetchCounts: () => Promise<{ usersCount: number; chatsCount: number }>;
   updateStats: (nextStats: AdminStat[]) => void;
-  toast: (options: { title: string; description: string; variant?: string }) => void;
+  toast: ReturnType<typeof useToast>['toast'];
 };
 
 export const performAdminUserCreation = async ({
   email,
   password,
+  name,
   createUser,
   fetchCounts,
   updateStats,
   toast,
 }: PerformAdminUserCreationParams) => {
   try {
-    const { error } = await createUser({ email, password });
+    const { error } = await createUser({ email, password, name });
 
     if (error) {
       toast({
@@ -106,6 +108,7 @@ const Admin = () => {
   const [stats, setStats] = useState<AdminStat[]>(defaultStats);
   const [createEmail, setCreateEmail] = useState("");
   const [createPassword, setCreatePassword] = useState("");
+  const [createName, setCreateName] = useState("");
   const [creatingUser, setCreatingUser] = useState(false);
   const { toast } = useToast();
 
@@ -184,9 +187,10 @@ const Admin = () => {
       const result = await performAdminUserCreation({
         email: createEmail,
         password: createPassword,
-        createUser: async ({ email, password }) => {
+        name: createName,
+        createUser: async ({ email, password, name }) => {
           const { data, error } = await supabase.functions.invoke("admin-create-user", {
-            body: { email, password },
+            body: { email, password, name },
           });
 
           if (error) {
@@ -212,6 +216,7 @@ const Admin = () => {
       if (result) {
         setCreateEmail("");
         setCreatePassword("");
+        setCreateName("");
       }
     } finally {
       setCreatingUser(false);
@@ -265,6 +270,16 @@ const Admin = () => {
                     onChange={(event) => setCreatePassword(event.target.value)}
                   />
                 </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="admin-create-name">Nome do agente</Label>
+                  <Input
+                    id="admin-create-name"
+                    type="text"
+                    value={createName}
+                    onChange={(event) => setCreateName(event.target.value)}
+                    placeholder="Opcional"
+                  />
+                </div>
                 <div className="md:col-span-2">
                   <Button className="w-full md:w-auto" disabled={creatingUser} type="submit">
                     {creatingUser ? "Cadastrando..." : "Cadastrar usuário"}
@@ -289,7 +304,7 @@ const Admin = () => {
         </div>
       </div>
     );
-  }, [authorized, createEmail, createPassword, creatingUser, handleCreateUser, loading, stats]);
+  }, [authorized, createEmail, createPassword, createName, creatingUser, handleCreateUser, loading, stats]);
 
   return content;
 };
