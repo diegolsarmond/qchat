@@ -9,6 +9,12 @@ export interface Credential {
   createdAt: Date;
 }
 
+export interface Label {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
 export type ChatAttendanceStatus = "waiting" | "in_service" | "finished";
 
 export type ChatFilter = "all" | "mine" | "in_service" | "waiting" | "finished";
