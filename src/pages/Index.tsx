@@ -10,6 +10,7 @@ import {
   Chat,
   ChatAttendanceStatus,
   ChatFilter,
+  Label,
   Message,
   User as WhatsAppUser,
   SendMessagePayload,
@@ -325,9 +326,25 @@ const Index = () => {
         )
         .subscribe();
 
+      const chatLabelsChannel = supabase
+        .channel('chat-labels-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'chat_labels',
+          },
+          () => {
+            fetchChats();
+          }
+        )
+        .subscribe();
+
       return () => {
         supabase.removeChannel(chatsChannel);
         supabase.removeChannel(messagesChannel);
+        supabase.removeChannel(chatLabelsChannel);
       };
     }
   }, [isConnected, credentialId, selectedChat]);
@@ -365,6 +382,19 @@ const Index = () => {
       if (data?.chats) {
         setChats(data.chats.map((c: any) => {
           const lastMessageDate = c.last_message_timestamp ? new Date(c.last_message_timestamp) : null;
+          const labels = Array.isArray(c.labels)
+            ? c.labels
+                .map((label: any) => {
+                  const id = typeof label?.id === 'string' ? label.id : null;
+                  if (!id) {
+                    return null;
+                  }
+                  const name = typeof label?.name === 'string' ? label.name : '';
+                  const color = typeof label?.color === 'string' ? label.color : null;
+                  return { id, name, color } as Label;
+                })
+                .filter((label): label is Label => Boolean(label))
+            : [];
 
           return {
             id: c.id,
@@ -379,6 +409,7 @@ const Index = () => {
             isGroup: c.is_group || false,
             assignedTo: c.assigned_to || undefined,
             attendanceStatus: deriveAttendanceStatus(c),
+            labels: labels.length > 0 ? labels : undefined,
           };
         }));
       }
