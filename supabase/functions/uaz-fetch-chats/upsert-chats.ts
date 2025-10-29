@@ -1,16 +1,14 @@
 export interface PersistChatsParams {
   supabaseClient: any;
   credentialId: string;
-  userId?: string | null;
   chats: Array<Record<string, unknown>>;
 }
 
 export function mapChatsToRecords(params: {
   chats: Array<Record<string, unknown>>;
   credentialId: string;
-  userId?: string | null;
 }) {
-  const { chats, credentialId, userId } = params;
+  const { chats, credentialId } = params;
 
   return chats.map((chat) => ({
     credential_id: credentialId,
@@ -21,13 +19,12 @@ export function mapChatsToRecords(params: {
     unread_count: (chat.wa_unreadCount as number) || 0,
     avatar: (chat.image as string) || '',
     is_group: (chat.wa_isGroup as boolean) || false,
-    ...(userId ? { user_id: userId } : {}),
   }));
 }
 
 export async function persistChats(params: PersistChatsParams) {
-  const { supabaseClient, credentialId, userId, chats } = params;
-  const records = mapChatsToRecords({ chats, credentialId, userId });
+  const { supabaseClient, credentialId, chats } = params;
+  const records = mapChatsToRecords({ chats, credentialId });
 
   if (records.length === 0) {
     return;

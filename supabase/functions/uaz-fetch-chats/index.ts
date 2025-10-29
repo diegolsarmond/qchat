@@ -116,7 +116,6 @@ const handler = async (req: Request): Promise<Response> => {
       await persistChats({
         supabaseClient,
         credentialId,
-        userId,
         chats,
       });
     } catch (upsertError) {
@@ -130,10 +129,6 @@ const handler = async (req: Request): Promise<Response> => {
       .eq('credential_id', credentialId)
       .order('last_message_timestamp', { ascending: false })
       .range(offset, offset + limit - 1);
-
-    if (userId) {
-      chatsQuery = chatsQuery.eq('user_id', userId);
-    }
 
     const { data: dbChats, error: dbError, count } = await chatsQuery;
 

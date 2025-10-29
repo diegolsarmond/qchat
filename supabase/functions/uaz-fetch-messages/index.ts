@@ -106,6 +106,12 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const { data: chat, error: chatError } = await chatQuery.single();
+    // Fetch chat
+    const { data: chat, error: chatError } = await supabaseClient
+      .from('chats')
+      .select('wa_chat_id')
+      .eq('id', chatId)
+      .single();
 
     if (chatError || !chat) {
       return new Response(

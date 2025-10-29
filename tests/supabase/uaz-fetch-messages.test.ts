@@ -320,6 +320,8 @@ test('handler de uaz-fetch-messages processa token válido e upserta mensagens',
               throw new Error(`Filtro inesperado em chats: ${field}`);
             }
 
+            assert.equal(field, 'id');
+            assert.equal(value, 'chat-1');
             return this;
           },
           single: async () => ({ data: chatRecord, error: null }),
@@ -340,6 +342,8 @@ test('handler de uaz-fetch-messages processa token válido e upserta mensagens',
               throw new Error(`Filtro inesperado em messages: ${field}`);
             }
 
+            assert.equal(field, 'chat_id');
+            assert.equal(value, 'chat-1');
             return query;
           },
           order() {
