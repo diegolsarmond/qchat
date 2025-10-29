@@ -17,155 +17,118 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
   const [status, setStatus] = useState<string>("Conectando ao WhatsApp...");
   const [instanceName, setInstanceName] = useState<string>("");
   const [pairingCode, setPairingCode] = useState<string>("");
-  const [uazSubdomain, setUazSubdomain] = useState<string>("");
-  const [uazToken, setUazToken] = useState<string>("");
   const { toast } = useToast();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFetchingRef = useRef(false);
+  const isActiveRef = useRef(true);
 
-  const fetchQRCode = async (
-    credentialData?: { subdomain: string; token: string }
-  ) => {
-    if (isFetchingRef.current) {
+  const fetchQRCode = async () => {
+    if (isFetchingRef.current || !isActiveRef.current) {
       return;
     }
 
     isFetchingRef.current = true;
 
+    const ensurePolling = () => {
+      if (isActiveRef.current && !intervalRef.current) {
+        intervalRef.current = setInterval(() => {
+          void fetchQRCode();
+        }, 3000);
+      }
+    };
+
     try {
       setStatus("Verificando status da conexão...");
 
-      const subdomain = credentialData?.subdomain || uazSubdomain;
-      const token = credentialData?.token || uazToken;
+      const { data, error } = await supabase.functions.invoke('uaz-get-qr', {
+        body: { credentialId },
+      });
 
-      if (!subdomain || !token) {
-        setLoading(true);
-        setStatus("Carregando credenciais...");
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      type ConnectionResponse = {
+        status?: string | null;
+        qrCode?: string | null;
+        profileName?: string | null;
+        phoneNumber?: string | null;
+        connected?: boolean;
+        pairingCode?: string | null;
+      } | null;
+
+      const connectionData = (data ?? null) as ConnectionResponse;
+
+      if (!isActiveRef.current) {
         return;
       }
 
-      const response = await fetch(`https://${subdomain}.uazapi.com/instance/status`, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          token,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`UAZ API respondeu com status ${response.status}`);
+      if (!connectionData) {
+        setQrCode(null);
+        setPairingCode("");
+        setLoading(false);
+        setStatus("Status desconhecido. Tente novamente.");
+        onStatusChange?.(null);
+        ensurePolling();
+        return;
       }
 
-      const responseText = await response.text();
-      type InstanceData = {
-        status?: { connected?: boolean } | string | null;
-        instance?: {
-          status?: string | null;
-          qrcode?: string | null;
-          profileName?: string | null;
-          owner?: string | null;
-          paircode?: string | null;
-        } | null;
-      };
+      const normalizedStatus = connectionData.status ?? (connectionData.connected ? 'connected' : undefined);
 
-      let instanceData: InstanceData = {};
-
-      if (responseText) {
-        try {
-          instanceData = JSON.parse(responseText) as InstanceData;
-        } catch (parseError) {
-          throw new Error('Resposta inválida da UAZ API');
-        }
-      }
-
-      console.log('Status da instância:', instanceData);
-
-      const connected =
-        (typeof instanceData.status === 'object' && instanceData.status?.connected === true) ||
-        instanceData.instance?.status === 'connected' ||
-        instanceData.status === 'connected';
-
-      const instanceStatus =
-        typeof instanceData.instance?.status === 'string'
-          ? instanceData.instance.status
-          : typeof instanceData.status === 'string'
-            ? instanceData.status
-            : connected
-              ? 'connected'
-              : 'disconnected';
-
-      onStatusChange?.(connected ? 'connected' : instanceStatus);
-
-      const updateData: Record<string, any> = {
-        status: instanceStatus || 'disconnected',
-        updated_at: new Date().toISOString(),
-      };
-
-      if (instanceData.instance?.qrcode) {
-        updateData.qr_code = instanceData.instance.qrcode;
-      }
-
-      if (instanceData.instance?.profileName) {
-        updateData.profile_name = instanceData.instance.profileName;
-      }
-
-      if (instanceData.instance?.owner) {
-        updateData.phone_number = instanceData.instance.owner;
-      }
-
-      const { error: updateError } = await supabase
-        .from('credentials')
-        .update(updateData)
-        .eq('id', credentialId);
-
-      if (updateError) {
-        console.error('Erro ao atualizar credencial:', updateError);
-      }
-
-      if (connected) {
+      if (connectionData.connected) {
         setStatus("Já conectado!");
         setPairingCode("");
+        setQrCode(null);
         setLoading(false);
         toast({
           title: "Conectado",
-          description: `WhatsApp já conectado: ${instanceData.instance?.owner || 'número detectado'}`,
+          description: `WhatsApp já conectado: ${connectionData.phoneNumber || 'número detectado'}`,
         });
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }
+        onStatusChange?.('connected');
         setTimeout(() => onConnected(), 500);
         return;
       }
 
-      if (instanceData.instance?.paircode) {
-        setPairingCode(instanceData.instance.paircode);
+      if (connectionData.pairingCode) {
+        setPairingCode(connectionData.pairingCode);
         setQrCode(null);
         setLoading(false);
         setStatus("Digite o código de pareamento no WhatsApp");
+        onStatusChange?.(normalizedStatus ?? 'pairing');
+        ensurePolling();
         return;
       }
 
       setPairingCode("");
 
-      if (instanceData.instance?.qrcode) {
-        setQrCode(instanceData.instance.qrcode ?? null);
+      if (connectionData.qrCode) {
+        setQrCode(connectionData.qrCode ?? null);
         setLoading(false);
         setStatus("Escaneie o QR Code com seu WhatsApp");
+        onStatusChange?.(normalizedStatus ?? 'qrcode');
+        ensurePolling();
         return;
       }
 
-      if (instanceStatus === 'connecting' || instanceStatus === 'disconnected') {
+      if (normalizedStatus === 'connecting' || normalizedStatus === 'disconnected') {
         setQrCode(null);
         setPairingCode("");
         setLoading(true);
         setStatus("Gerando QR Code...");
+        onStatusChange?.(normalizedStatus);
+        ensurePolling();
         return;
       }
 
       // Caso não identificado
       setLoading(false);
       setStatus("Status desconhecido. Tente novamente.");
+      onStatusChange?.(normalizedStatus ?? null);
+      ensurePolling();
 
     } catch (error) {
       console.error('Error fetching connection status:', error);
@@ -184,16 +147,19 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
   };
 
   useEffect(() => {
-    let isActive = true;
+    isActiveRef.current = true;
 
-    const fetchCredential = async () => {
+    const initialize = async () => {
+      const statusPromise = fetchQRCode();
+
       const { data, error } = await supabase
         .from('credentials')
-        .select('instance_name, subdomain, token')
+        .select('instance_name')
         .eq('id', credentialId)
         .single();
 
-      if (!isActive) {
+      if (!isActiveRef.current) {
+        await statusPromise;
         return;
       }
 
@@ -202,32 +168,19 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
         setLoading(false);
         setStatus("Credencial não encontrada");
         onStatusChange?.('error');
+        await statusPromise;
         return;
       }
 
       setInstanceName(data.instance_name);
-      setUazSubdomain(data.subdomain);
-      setUazToken(data.token);
 
-      await fetchQRCode({ subdomain: data.subdomain, token: data.token });
-
-      if (!isActive) {
-        return;
-      }
-
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-
-      intervalRef.current = setInterval(() => {
-        fetchQRCode();
-      }, 3000);
+      await statusPromise;
     };
 
-    fetchCredential();
+    initialize();
 
     return () => {
-      isActive = false;
+      isActiveRef.current = false;
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
