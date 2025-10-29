@@ -3,6 +3,7 @@ export interface PersistChatsParams {
   credentialId: string;
   chats: Array<Record<string, unknown>>;
   credentialUserId?: string | null;
+  userId?: string | null;
 }
 
 export function mapChatsToRecords(params: {
@@ -17,11 +18,32 @@ export function mapChatsToRecords(params: {
     : null;
 
   return chats.map((chat) => {
-    const attendanceStatus = typeof chat.attendance_status === 'string'
+    const rawAttendanceStatus = typeof chat.attendance_status === 'string'
       ? chat.attendance_status
       : typeof chat.attendanceStatus === 'string'
         ? chat.attendanceStatus
         : undefined;
+
+    const normalizedAttendanceStatus = typeof rawAttendanceStatus === 'string'
+      ? rawAttendanceStatus.trim().toLowerCase()
+      : undefined;
+
+    const attendanceMap: Record<string, string> = {
+      finished: 'finished',
+      finalized: 'finished',
+      closed: 'finished',
+      in_service: 'in_service',
+      'in progress': 'in_service',
+      in_progress: 'in_service',
+      active: 'in_service',
+      waiting: 'waiting',
+      pending: 'waiting',
+      queued: 'waiting',
+    };
+
+    const attendanceStatus = normalizedAttendanceStatus
+      ? attendanceMap[normalizedAttendanceStatus]
+      : undefined;
 
     const record: Record<string, unknown> = {
       credential_id: credentialId,
@@ -33,6 +55,10 @@ export function mapChatsToRecords(params: {
       avatar: (chat.image as string) || '',
       is_group: (chat.wa_isGroup as boolean) || false,
     };
+
+    if (credentialUserId) {
+      record.user_id = credentialUserId;
+    }
 
     if (attendanceStatus) {
       record.attendance_status = attendanceStatus;
@@ -47,7 +73,8 @@ export function mapChatsToRecords(params: {
 }
 
 export async function persistChats(params: PersistChatsParams) {
-  const { supabaseClient, credentialId, chats, credentialUserId } = params;
+  const { supabaseClient, credentialId, chats } = params;
+  const credentialUserId = params.credentialUserId ?? params.userId;
   const records = mapChatsToRecords({ chats, credentialId, credentialUserId });
 
   if (records.length === 0) {
