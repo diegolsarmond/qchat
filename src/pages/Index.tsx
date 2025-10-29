@@ -103,6 +103,18 @@ const Index = () => {
     return map;
   }, [users]);
 
+  const fetchUsers = useCallback(async () => {
+    const { data } = await supabase.from('users').select('*');
+    if (data) {
+      setUsers(data.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        avatar: u.avatar || undefined,
+      })));
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -176,19 +188,27 @@ const Index = () => {
 
   // Fetch users on mount
   useEffect(() => {
-    const fetchUsers = async () => {
-      const { data } = await supabase.from('users').select('*');
-      if (data) {
-        setUsers(data.map(u => ({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          avatar: u.avatar || undefined,
-        })));
-      }
-    };
     fetchUsers();
-  }, []);
+
+    const channel = supabase
+      .channel('users-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'users',
+        },
+        () => {
+          fetchUsers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [fetchUsers]);
 
   // Fetch chats when connected and setup realtime
   useEffect(() => {
