@@ -39,7 +39,7 @@ const envSource: EnvSource = loadBundlerEnv() ?? loadImportMetaEnv() ?? processE
 
 const DEFAULT_SUPABASE_URL = 'http://localhost:54321';
 const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'public-anon-key';
-const DEFAULT_SUPABASE_PROJECT_ID = 'default';
+const DEFAULT_SUPABASE_PROJECT_ID = undefined;
 
 const normalizeEnvValue = (value: string | undefined) => (typeof value === 'string' ? value.trim() : undefined);
 
@@ -60,7 +60,7 @@ const shouldAppendProjectPath = (url: URL) => {
   return !/\/project\//.test(pathname) && !/\/projects\//.test(pathname);
 };
 
-const buildSupabaseUrl = (baseUrl: string, projectId: string) => {
+const buildSupabaseUrl = (baseUrl: string, projectId?: string) => {
   try {
     const parsedUrl = new URL(baseUrl);
     if (projectId && shouldAppendProjectPath(parsedUrl)) {
