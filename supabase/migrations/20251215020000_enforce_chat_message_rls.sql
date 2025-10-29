@@ -35,7 +35,9 @@ BEGIN
     RAISE EXCEPTION 'Changing chat user ownership is not allowed';
   ELSIF TG_OP = 'UPDATE' THEN
     IF OLD.user_id IS DISTINCT FROM NEW.user_id THEN
-      IF NEW.user_id = auth.uid() THEN
+      IF OLD.user_id IS NULL AND NEW.user_id = auth.uid() THEN
+        RETURN NEW;
+      ELSIF OLD.user_id = auth.uid() AND NEW.user_id IS NULL THEN
         RETURN NEW;
       END IF;
       RAISE EXCEPTION 'Changing chat user ownership is not allowed';
@@ -64,7 +66,9 @@ BEGIN
     RAISE EXCEPTION 'Changing message user ownership is not allowed';
   ELSIF TG_OP = 'UPDATE' THEN
     IF OLD.user_id IS DISTINCT FROM NEW.user_id THEN
-      IF NEW.user_id = auth.uid() THEN
+      IF OLD.user_id IS NULL AND NEW.user_id = auth.uid() THEN
+        RETURN NEW;
+      ELSIF OLD.user_id = auth.uid() AND NEW.user_id IS NULL THEN
         RETURN NEW;
       END IF;
       RAISE EXCEPTION 'Changing message user ownership is not allowed';
