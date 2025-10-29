@@ -35,7 +35,7 @@ const processEnv = typeof process !== 'undefined'
   ? ((process.env ?? {}) as EnvSource)
   : undefined;
 
-const envSource: EnvSource = loadBundlerEnv() ?? processEnv ?? {};
+const envSource: EnvSource = loadBundlerEnv() ?? loadImportMetaEnv() ?? processEnv ?? {};
 
 const DEFAULT_SUPABASE_URL = 'http://localhost:54321';
 const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'public-anon-key';
