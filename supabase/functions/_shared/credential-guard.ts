@@ -38,7 +38,7 @@ export function ensureCredentialOwnership<T extends CredentialRecord>(
     return { credential };
   }
 
-  if (options.isMember) {
+  if (options.isMember && userId) {
     return { credential };
   }
 
