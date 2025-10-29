@@ -1,10 +1,12 @@
 -- Create labels table
 CREATE TABLE IF NOT EXISTS public.labels (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE,
+  user_id UUID NOT NULL REFERENCES auth.users(id),
+  name TEXT NOT NULL,
   color TEXT,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  UNIQUE (user_id, name)
 );
 
 CREATE TRIGGER IF NOT EXISTS update_labels_updated_at
@@ -26,6 +28,9 @@ CREATE INDEX IF NOT EXISTS chat_labels_chat_id_idx
 CREATE INDEX IF NOT EXISTS chat_labels_label_id_idx
   ON public.chat_labels(label_id);
 
+CREATE INDEX IF NOT EXISTS labels_user_id_idx
+  ON public.labels(user_id);
+
 ALTER TABLE public.labels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chat_labels ENABLE ROW LEVEL SECURITY;
 
@@ -36,29 +41,33 @@ USING (
   auth.role() = 'service_role'
   OR (
     auth.uid() IS NOT NULL
-    AND EXISTS (
-      SELECT 1
-      FROM public.chat_labels cl
-      JOIN public.chats ch ON ch.id = cl.chat_id
-      WHERE cl.label_id = public.labels.id
-        AND (
-          auth.uid() = ch.assigned_to
-          OR auth.uid() = ch.user_id
-          OR EXISTS (
-            SELECT 1
-            FROM public.credentials c
-            WHERE c.id = ch.credential_id
-              AND c.user_id = auth.uid()
-          )
-          OR (
-            ch.assigned_to IS NULL
-            AND (
-              COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
-              OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
-              OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+    AND (
+      public.labels.user_id = auth.uid()
+      OR EXISTS (
+        SELECT 1
+        FROM public.chat_labels cl
+        JOIN public.chats ch ON ch.id = cl.chat_id
+        WHERE cl.label_id = public.labels.id
+          AND ch.user_id = public.labels.user_id
+          AND (
+            auth.uid() = ch.assigned_to
+            OR auth.uid() = ch.user_id
+            OR EXISTS (
+              SELECT 1
+              FROM public.credentials c
+              WHERE c.id = ch.credential_id
+                AND c.user_id = auth.uid()
+            )
+            OR (
+              ch.assigned_to IS NULL
+              AND (
+                COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+              )
             )
           )
-        )
+      )
     )
   )
 );
@@ -70,29 +79,33 @@ USING (
   auth.role() = 'service_role'
   OR (
     auth.uid() IS NOT NULL
-    AND EXISTS (
-      SELECT 1
-      FROM public.chat_labels cl
-      JOIN public.chats ch ON ch.id = cl.chat_id
-      WHERE cl.label_id = public.labels.id
-        AND (
-          auth.uid() = ch.assigned_to
-          OR auth.uid() = ch.user_id
-          OR EXISTS (
-            SELECT 1
-            FROM public.credentials c
-            WHERE c.id = ch.credential_id
-              AND c.user_id = auth.uid()
-          )
-          OR (
-            ch.assigned_to IS NULL
-            AND (
-              COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
-              OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
-              OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+    AND (
+      public.labels.user_id = auth.uid()
+      OR EXISTS (
+        SELECT 1
+        FROM public.chat_labels cl
+        JOIN public.chats ch ON ch.id = cl.chat_id
+        WHERE cl.label_id = public.labels.id
+          AND ch.user_id = public.labels.user_id
+          AND (
+            auth.uid() = ch.assigned_to
+            OR auth.uid() = ch.user_id
+            OR EXISTS (
+              SELECT 1
+              FROM public.credentials c
+              WHERE c.id = ch.credential_id
+                AND c.user_id = auth.uid()
+            )
+            OR (
+              ch.assigned_to IS NULL
+              AND (
+                COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+              )
             )
           )
-        )
+      )
     )
   )
 )
@@ -100,29 +113,33 @@ WITH CHECK (
   auth.role() = 'service_role'
   OR (
     auth.uid() IS NOT NULL
-    AND EXISTS (
-      SELECT 1
-      FROM public.chat_labels cl
-      JOIN public.chats ch ON ch.id = cl.chat_id
-      WHERE cl.label_id = public.labels.id
-        AND (
-          auth.uid() = ch.assigned_to
-          OR auth.uid() = ch.user_id
-          OR EXISTS (
-            SELECT 1
-            FROM public.credentials c
-            WHERE c.id = ch.credential_id
-              AND c.user_id = auth.uid()
-          )
-          OR (
-            ch.assigned_to IS NULL
-            AND (
-              COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
-              OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
-              OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+    AND (
+      public.labels.user_id = auth.uid()
+      OR EXISTS (
+        SELECT 1
+        FROM public.chat_labels cl
+        JOIN public.chats ch ON ch.id = cl.chat_id
+        WHERE cl.label_id = public.labels.id
+          AND ch.user_id = public.labels.user_id
+          AND (
+            auth.uid() = ch.assigned_to
+            OR auth.uid() = ch.user_id
+            OR EXISTS (
+              SELECT 1
+              FROM public.credentials c
+              WHERE c.id = ch.credential_id
+                AND c.user_id = auth.uid()
+            )
+            OR (
+              ch.assigned_to IS NULL
+              AND (
+                COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+              )
             )
           )
-        )
+      )
     )
   )
 );
@@ -134,26 +151,30 @@ WITH CHECK (
   auth.role() = 'service_role'
   OR (
     auth.uid() IS NOT NULL
-    AND EXISTS (
-      SELECT 1
-      FROM public.chats ch
-      WHERE (
-        auth.uid() = ch.assigned_to
-        OR auth.uid() = ch.user_id
-        OR EXISTS (
-          SELECT 1
-          FROM public.credentials c
-          WHERE c.id = ch.credential_id
-            AND c.user_id = auth.uid()
-        )
-        OR (
-          ch.assigned_to IS NULL
+    AND (
+      public.labels.user_id = auth.uid()
+      OR EXISTS (
+        SELECT 1
+        FROM public.chats ch
+        WHERE ch.user_id = public.labels.user_id
           AND (
-            COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
-            OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
-            OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+            auth.uid() = ch.assigned_to
+            OR auth.uid() = ch.user_id
+            OR EXISTS (
+              SELECT 1
+              FROM public.credentials c
+              WHERE c.id = ch.credential_id
+                AND c.user_id = auth.uid()
+            )
+            OR (
+              ch.assigned_to IS NULL
+              AND (
+                COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+              )
+            )
           )
-        )
       )
     )
   )
@@ -166,29 +187,33 @@ USING (
   auth.role() = 'service_role'
   OR (
     auth.uid() IS NOT NULL
-    AND EXISTS (
-      SELECT 1
-      FROM public.chat_labels cl
-      JOIN public.chats ch ON ch.id = cl.chat_id
-      WHERE cl.label_id = public.labels.id
-        AND (
-          auth.uid() = ch.assigned_to
-          OR auth.uid() = ch.user_id
-          OR EXISTS (
-            SELECT 1
-            FROM public.credentials c
-            WHERE c.id = ch.credential_id
-              AND c.user_id = auth.uid()
-          )
-          OR (
-            ch.assigned_to IS NULL
-            AND (
-              COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
-              OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
-              OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+    AND (
+      public.labels.user_id = auth.uid()
+      OR EXISTS (
+        SELECT 1
+        FROM public.chat_labels cl
+        JOIN public.chats ch ON ch.id = cl.chat_id
+        WHERE cl.label_id = public.labels.id
+          AND ch.user_id = public.labels.user_id
+          AND (
+            auth.uid() = ch.assigned_to
+            OR auth.uid() = ch.user_id
+            OR EXISTS (
+              SELECT 1
+              FROM public.credentials c
+              WHERE c.id = ch.credential_id
+                AND c.user_id = auth.uid()
+            )
+            OR (
+              ch.assigned_to IS NULL
+              AND (
+                COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,is_admin}'), 'false') = 'true'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'), '') = 'admin'
+                OR COALESCE((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'app_role'), '') = 'admin'
+              )
             )
           )
-        )
+      )
     )
   )
 );
