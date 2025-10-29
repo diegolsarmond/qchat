@@ -36,8 +36,11 @@ const processEnv = typeof process !== 'undefined'
 
 const envSource: EnvSource = loadBundlerEnv() ?? processEnv ?? {};
 
-const SUPABASE_URL = 'https://supabase02.quantumtecnologia.com.br';
-const SUPABASE_PUBLISHABLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
+const DEFAULT_SUPABASE_URL = 'http://localhost:54321';
+const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'public-anon-key';
+
+const SUPABASE_URL = envSource.VITE_SUPABASE_URL ?? DEFAULT_SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY = envSource.VITE_SUPABASE_PUBLISHABLE_KEY ?? DEFAULT_SUPABASE_PUBLISHABLE_KEY;
 
 const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
@@ -62,20 +65,24 @@ if (!globalSupabase.__supabaseClient__) {
 
 const supabaseInstance = globalSupabase.__supabaseClient__;
 
-const originalInvoke = supabaseInstance.functions.invoke.bind(supabaseInstance.functions);
+const supabaseFunctions = supabaseInstance.functions;
 
-supabaseInstance.functions.invoke = (async (functionName, options) => {
-  const { data } = await supabaseInstance.auth.getSession();
-  const accessToken = data?.session?.access_token;
+if (supabaseFunctions?.invoke) {
+  const originalInvoke = supabaseFunctions.invoke.bind(supabaseFunctions);
 
-  const headers = accessToken
-    ? { ...(options?.headers ?? {}), Authorization: `Bearer ${accessToken}` }
-    : options?.headers;
+  supabaseFunctions.invoke = (async (functionName, options) => {
+    const { data } = await supabaseInstance.auth.getSession();
+    const accessToken = data?.session?.access_token;
 
-  return originalInvoke(functionName, {
-    ...(options ?? {}),
-    ...(headers ? { headers } : {}),
-  });
-}) as typeof supabaseInstance.functions.invoke;
+    const headers = accessToken
+      ? { ...(options?.headers ?? {}), Authorization: `Bearer ${accessToken}` }
+      : options?.headers;
+
+    return originalInvoke(functionName, {
+      ...(options ?? {}),
+      ...(headers ? { headers } : {}),
+    });
+  }) as typeof supabaseFunctions.invoke;
+}
 
 export const supabase = supabaseInstance;
