@@ -108,11 +108,18 @@ ON public.credentials
 FOR INSERT
 WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Owners can update credentials"
+CREATE POLICY "Members can update credentials"
 ON public.credentials
 FOR UPDATE
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
+USING (
+  auth.uid() = user_id OR
+  EXISTS (
+    SELECT 1
+    FROM public.credential_members members
+    WHERE members.credential_id = public.credentials.id
+      AND members.user_id = auth.uid()
+  )
+);
 
 CREATE POLICY "Users can delete their own credentials"
 ON public.credentials
