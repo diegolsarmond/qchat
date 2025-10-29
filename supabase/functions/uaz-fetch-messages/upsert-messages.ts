@@ -21,6 +21,10 @@ export async function upsertFetchedMessages({
     return;
   }
 
+  const userId = typeof credentialUserId === "string" && credentialUserId.length > 0
+    ? credentialUserId
+    : null;
+
   const payload = messages.map((msg) => {
     const storage = resolveMessageStorage({
       content: msg.text || "",
@@ -32,7 +36,7 @@ export async function upsertFetchedMessages({
       mediaBase64: msg.mediaBase64 || msg.base64 || null,
     });
 
-    return {
+    const record: Record<string, any> = {
       chat_id: chatId,
       credential_id: credentialId,
       wa_message_id: msg.messageid,
@@ -49,8 +53,13 @@ export async function upsertFetchedMessages({
       status: msg.status || "",
       message_timestamp: msg.messageTimestamp || 0,
       is_private: Boolean(msg.isPrivate),
-      ...(credentialUserId ? { user_id: credentialUserId } : {}),
     };
+
+    if (userId) {
+      record.user_id = userId;
+    }
+
+    return record;
   });
 
   if (payload.length === 0) {

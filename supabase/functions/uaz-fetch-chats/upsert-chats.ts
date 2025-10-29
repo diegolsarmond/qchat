@@ -13,6 +13,10 @@ export function mapChatsToRecords(params: {
 }) {
   const { chats, credentialId, credentialUserId } = params;
 
+  const userId = typeof credentialUserId === 'string' && credentialUserId.length > 0
+    ? credentialUserId
+    : null;
+
   return chats.map((chat) => {
     const rawAttendanceStatus = typeof chat.attendance_status === 'string'
       ? chat.attendance_status
@@ -58,6 +62,10 @@ export function mapChatsToRecords(params: {
 
     if (attendanceStatus) {
       record.attendance_status = attendanceStatus;
+    }
+
+    if (userId) {
+      record.user_id = userId;
     }
 
     return record;
