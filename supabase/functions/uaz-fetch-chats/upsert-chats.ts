@@ -12,17 +12,10 @@ export function mapChatsToRecords(params: {
 }) {
   const { chats, credentialId, credentialUserId } = params;
 
-  return chats.map((chat) => ({
-    credential_id: credentialId,
-    wa_chat_id: chat.wa_chatid,
-    name: (chat.name as string) || (chat.wa_name as string) || (chat.wa_contactName as string) || 'Unknown',
-    last_message: (chat.wa_lastMessageTextVote as string) || '',
-    last_message_timestamp: (chat.wa_lastMsgTimestamp as number) || 0,
-    unread_count: (chat.wa_unreadCount as number) || 0,
-    avatar: (chat.image as string) || '',
-    is_group: (chat.wa_isGroup as boolean) || false,
-    ...(credentialUserId ? { user_id: credentialUserId } : {}),
-  }));
+  const userId = typeof credentialUserId === 'string' && credentialUserId.length > 0
+    ? credentialUserId
+    : null;
+
   return chats.map((chat) => {
     const attendanceStatus = typeof chat.attendance_status === 'string'
       ? chat.attendance_status
@@ -43,6 +36,10 @@ export function mapChatsToRecords(params: {
 
     if (attendanceStatus) {
       record.attendance_status = attendanceStatus;
+    }
+
+    if (userId) {
+      record.user_id = userId;
     }
 
     return record;
