@@ -276,7 +276,7 @@ test('handler de uaz-fetch-messages rejeita requisição sem Authorization', asy
 
 test('handler de uaz-fetch-messages processa token válido e upserta mensagens', async () => {
   const credentialRecord = { id: 'cred-1', user_id: 'user-123', subdomain: 'tenant', token: 'uaz-token' };
-  const chatRecord = { wa_chat_id: 'chat-wa-id' };
+  const chatRecord = { id: 'chat-1', wa_chat_id: 'chat-wa-id', credential_id: 'cred-1', user_id: 'user-123' };
   const dbMessages = [
     { id: 'db-msg-1', chat_id: 'chat-1', user_id: 'user-123', message_timestamp: 100 },
   ];
@@ -310,6 +310,16 @@ test('handler de uaz-fetch-messages processa token válido e upserta mensagens',
             return this;
           },
           eq(field: string, value: string) {
+            if (field === 'id') {
+              assert.equal(value, 'chat-1');
+            } else if (field === 'credential_id') {
+              assert.equal(value, 'cred-1');
+            } else if (field === 'user_id') {
+              assert.equal(value, 'user-123');
+            } else {
+              throw new Error(`Filtro inesperado em chats: ${field}`);
+            }
+
             assert.equal(field, 'id');
             assert.equal(value, 'chat-1');
             return this;
@@ -324,6 +334,14 @@ test('handler de uaz-fetch-messages processa token válido e upserta mensagens',
             return query;
           },
           eq(field: string, value: string) {
+            if (field === 'chat_id') {
+              assert.equal(value, 'chat-1');
+            } else if (field === 'credential_id') {
+              assert.equal(value, 'cred-1');
+            } else {
+              throw new Error(`Filtro inesperado em messages: ${field}`);
+            }
+
             assert.equal(field, 'chat_id');
             assert.equal(value, 'chat-1');
             return query;
