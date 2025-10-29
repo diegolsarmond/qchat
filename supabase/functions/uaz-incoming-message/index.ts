@@ -204,13 +204,18 @@ const handler = async (req: Request): Promise<Response> => {
 
     const ownedCredential = ownership.credential;
 
-    const eventToken = payload.token ?? payload.eventToken ?? payload.authToken ?? payload.signature;
+    const credentialToken = toString(ownedCredential.token);
+    const eventToken = toString(
+      payload.token ?? payload.eventToken ?? payload.authToken ?? payload.signature ?? "",
+    );
 
-    if (eventToken && eventToken !== ownedCredential.token) {
-      return new Response(
-        JSON.stringify({ error: "Token inválido" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (credentialToken) {
+      if (!eventToken || eventToken !== credentialToken) {
+        return new Response(
+          JSON.stringify({ error: "Token inválido" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     const incomingMessages = extractMessages(payload);
