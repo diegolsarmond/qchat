@@ -92,6 +92,10 @@ const handler = async (req: Request): Promise<Response> => {
     }
     const ownedCredential = ownership.credential;
 
+    const credentialOwnerId = typeof ownedCredential.user_id === 'string' && ownedCredential.user_id.length > 0
+      ? ownedCredential.user_id
+      : null;
+
     console.log('[UAZ Fetch Chats] Fetching from UAZ API');
 
     // Fetch chats from UAZ API using POST /chat/find
@@ -130,13 +134,28 @@ const handler = async (req: Request): Promise<Response> => {
         supabaseClient,
         credentialId,
         chats,
-        credentialUserId: ownedCredential.user_id ?? undefined,
+        credentialUserId: credentialOwnerId ?? undefined,
       });
     } catch (upsertError) {
       console.error('[UAZ Fetch Chats] Failed to upsert chats:', upsertError);
     }
 
     // Fetch updated chats from database with pagination
+    let shouldFilterByUserId = Boolean(credentialOwnerId);
+
+    if (shouldFilterByUserId) {
+      const { data: scopedData } = await supabaseClient
+        .from('chats')
+        .select('user_id')
+        .eq('credential_id', credentialId)
+        .not('user_id', 'is', null)
+        .limit(1);
+
+      if (!scopedData || scopedData.length === 0) {
+        shouldFilterByUserId = false;
+      }
+    }
+
     let chatsQuery = supabaseClient
       .from('chats')
       .select('*', { count: 'exact' })
@@ -144,8 +163,8 @@ const handler = async (req: Request): Promise<Response> => {
       .order('last_message_timestamp', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (ownedCredential.user_id) {
-      chatsQuery = chatsQuery.eq('user_id', ownedCredential.user_id);
+    if (shouldFilterByUserId && credentialOwnerId) {
+      chatsQuery = chatsQuery.eq('user_id', credentialOwnerId);
     }
 
     const { data: dbChats, error: dbError, count } = await chatsQuery;

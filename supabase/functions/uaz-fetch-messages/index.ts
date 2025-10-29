@@ -107,32 +107,37 @@ const handler = async (req: Request): Promise<Response> => {
     }
     const ownedCredential = ownership.credential;
 
-    // Fetch chat scoped to the authenticated owner/credential
-    let chatQuery = supabaseClient
-      .from('chats')
-      .select('id, wa_chat_id, credential_id, user_id')
-      .eq('id', chatId)
-      .eq('credential_id', credentialId);
+    const credentialOwnerId = typeof ownedCredential.user_id === 'string' && ownedCredential.user_id.length > 0
+      ? ownedCredential.user_id
+      : null;
 
-    if (userId) {
-      chatQuery = chatQuery.eq('user_id', userId);
+    let shouldFilterChatsByUserId = Boolean(credentialOwnerId);
+
+    if (shouldFilterChatsByUserId) {
+      const { data: chatScope } = await supabaseClient
+        .from('chats')
+        .select('user_id')
+        .eq('id', chatId)
+        .eq('credential_id', credentialId)
+        .not('user_id', 'is', null)
+        .limit(1);
+
+      if (!chatScope || chatScope.length === 0) {
+        shouldFilterChatsByUserId = false;
+      }
     }
 
-    const { data: chat, error: chatError } = await chatQuery.single();
-    // Fetch chat
     let chatQuery = supabaseClient
       .from('chats')
       .select('wa_chat_id')
-      .eq('id', chatId);
+      .eq('id', chatId)
+      .eq('credential_id', credentialId);
 
-    if (ownedCredential.user_id) {
-      chatQuery = chatQuery.eq('user_id', ownedCredential.user_id);
+    if (shouldFilterChatsByUserId && credentialOwnerId) {
+      chatQuery = chatQuery.eq('user_id', credentialOwnerId);
     }
 
     const { data: chat, error: chatError } = await chatQuery.single();
-      .eq('id', chatId)
-      .eq('credential_id', credentialId)
-      .single();
 
     if (chatError || !chat) {
       return new Response(
@@ -178,10 +183,26 @@ const handler = async (req: Request): Promise<Response> => {
       messages,
       chatId,
       credentialId,
-      credentialUserId: ownedCredential.user_id ?? undefined,
+      credentialUserId: credentialOwnerId ?? undefined,
     });
 
     // Fetch updated messages from database with pagination
+    let shouldFilterMessagesByUserId = Boolean(credentialOwnerId);
+
+    if (shouldFilterMessagesByUserId) {
+      const { data: messageScope } = await supabaseClient
+        .from('messages')
+        .select('user_id')
+        .eq('chat_id', chatId)
+        .eq('credential_id', credentialId)
+        .not('user_id', 'is', null)
+        .limit(1);
+
+      if (!messageScope || messageScope.length === 0) {
+        shouldFilterMessagesByUserId = false;
+      }
+    }
+
     let messagesQuery = supabaseClient
       .from('messages')
       .select('*', { count: 'exact' })
@@ -190,8 +211,8 @@ const handler = async (req: Request): Promise<Response> => {
       .order('message_timestamp', { ascending: order !== 'desc' })
       .range(safeOffset, safeOffset + safeLimit - 1);
 
-    if (ownedCredential.user_id) {
-      messagesQuery = messagesQuery.eq('user_id', ownedCredential.user_id);
+    if (shouldFilterMessagesByUserId && credentialOwnerId) {
+      messagesQuery = messagesQuery.eq('user_id', credentialOwnerId);
     }
 
     const { data: dbMessages, error: dbError, count } = await messagesQuery;
