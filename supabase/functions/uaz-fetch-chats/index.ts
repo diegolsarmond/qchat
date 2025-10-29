@@ -117,6 +117,7 @@ const handler = async (req: Request): Promise<Response> => {
         supabaseClient,
         credentialId,
         chats,
+        credentialUserId: ownedCredential.user_id ?? undefined,
       });
     } catch (upsertError) {
       console.error('[UAZ Fetch Chats] Failed to upsert chats:', upsertError);
@@ -129,6 +130,10 @@ const handler = async (req: Request): Promise<Response> => {
       .eq('credential_id', credentialId)
       .order('last_message_timestamp', { ascending: false })
       .range(offset, offset + limit - 1);
+
+    if (ownedCredential.user_id) {
+      chatsQuery = chatsQuery.eq('user_id', ownedCredential.user_id);
+    }
 
     const { data: dbChats, error: dbError, count } = await chatsQuery;
 

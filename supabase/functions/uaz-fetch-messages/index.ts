@@ -95,11 +95,16 @@ const handler = async (req: Request): Promise<Response> => {
     const ownedCredential = ownership.credential;
 
     // Fetch chat
-    const { data: chat, error: chatError } = await supabaseClient
+    let chatQuery = supabaseClient
       .from('chats')
       .select('wa_chat_id')
-      .eq('id', chatId)
-      .single();
+      .eq('id', chatId);
+
+    if (ownedCredential.user_id) {
+      chatQuery = chatQuery.eq('user_id', ownedCredential.user_id);
+    }
+
+    const { data: chat, error: chatError } = await chatQuery.single();
 
     if (chatError || !chat) {
       return new Response(
@@ -145,15 +150,22 @@ const handler = async (req: Request): Promise<Response> => {
       messages,
       chatId,
       credentialId,
+      credentialUserId: ownedCredential.user_id ?? undefined,
     });
 
     // Fetch updated messages from database with pagination
-    const { data: dbMessages, error: dbError, count } = await supabaseClient
+    let messagesQuery = supabaseClient
       .from('messages')
       .select('*', { count: 'exact' })
       .eq('chat_id', chatId)
       .order('message_timestamp', { ascending: order !== 'desc' })
       .range(safeOffset, safeOffset + safeLimit - 1);
+
+    if (ownedCredential.user_id) {
+      messagesQuery = messagesQuery.eq('user_id', ownedCredential.user_id);
+    }
+
+    const { data: dbMessages, error: dbError, count } = await messagesQuery;
 
     if (dbError) {
       console.error('[UAZ Fetch Messages] Failed to fetch from DB:', dbError);
