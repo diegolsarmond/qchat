@@ -80,6 +80,38 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
       }
 
       const userId = userData.user.id;
+      const email = userData.user.email;
+
+      if (!email) {
+        toast({
+          title: "Erro",
+          description: "Usuário autenticado sem e-mail cadastrado",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const userMetadata =
+        (typeof userData.user.user_metadata === "object" && userData.user.user_metadata !== null
+          ? userData.user.user_metadata
+          : {}) as Record<string, unknown>;
+      const metadataName = ["name", "full_name", "display_name"].reduce<string | null>((acc, key) => {
+        if (acc) {
+          return acc;
+        }
+        const value = userMetadata[key];
+        return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+      }, null);
+      const fallbackName = email.split("@")[0] ?? "Usuário";
+      const finalName = metadataName ?? (fallbackName.length > 0 ? fallbackName : "Usuário");
+
+      const { error: upsertUserError } = await supabase
+        .from('users')
+        .upsert({ id: userId, email, name: finalName }, { onConflict: 'id' });
+
+      if (upsertUserError) {
+        throw upsertUserError;
+      }
 
       // Insert credential into database
       const { data, error } = await supabase
