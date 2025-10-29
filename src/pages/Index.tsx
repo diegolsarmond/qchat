@@ -697,7 +697,9 @@ const Index = () => {
   };
 
   const handleAssignToUser = async (userId: string) => {
-    if (!chatToAssign) return;
+    if (!chatToAssign || !credentialId) return;
+
+    const previousAssigned = chats.find(c => c.id === chatToAssign)?.assignedTo || null;
 
     try {
       const { error } = await supabase
@@ -706,6 +708,33 @@ const Index = () => {
         .eq('id', chatToAssign);
 
       if (error) throw error;
+
+      const { error: membershipError } = await supabase
+        .from('credential_members')
+        .upsert({
+          credential_id: credentialId,
+          user_id: userId,
+          role: 'agent',
+        }, { onConflict: 'credential_id,user_id' });
+
+      if (membershipError) throw membershipError;
+
+      if (previousAssigned && previousAssigned !== userId) {
+        const { count: remainingAssignments } = await supabase
+          .from('chats')
+          .select('id', { count: 'exact', head: true })
+          .eq('credential_id', credentialId)
+          .eq('assigned_to', previousAssigned);
+
+        if ((remainingAssignments ?? 0) === 0) {
+          await supabase
+            .from('credential_members')
+            .delete()
+            .eq('credential_id', credentialId)
+            .eq('user_id', previousAssigned)
+            .eq('role', 'agent');
+        }
+      }
 
       setChats(prevChats =>
         prevChats.map(c =>

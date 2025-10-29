@@ -119,6 +119,27 @@ export type Database = {
         }
         Relationships: []
       }
+      credential_members: {
+        Row: {
+          created_at: string
+          credential_id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credential_id: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credential_id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           chat_id: string
