@@ -312,6 +312,18 @@ const Index = () => {
     }
   }, [isConnected, credentialId, selectedChat]);
 
+  const hasAssignments = (value: unknown) => {
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    if (typeof value === "string") {
+      return value.trim().length > 0;
+    }
+
+    return Boolean(value);
+  };
+
   const deriveAttendanceStatus = (chat: any): Chat["attendanceStatus"] => {
     const source =
       (typeof chat.attendance_status === "string" && chat.attendance_status) ||
@@ -320,6 +332,8 @@ const Index = () => {
       "";
 
     const normalized = source.toLowerCase();
+    const hasAssignedOperators =
+      hasAssignments(chat.assigned_to) || hasAssignments(chat.assignedTo);
 
     if (["finished", "finalized", "closed"].includes(normalized)) {
       return "finished";
@@ -330,10 +344,10 @@ const Index = () => {
     }
 
     if (["waiting", "pending", "queued"].includes(normalized)) {
-      return chat.assigned_to || chat.assignedTo ? "in_service" : "waiting";
+      return hasAssignedOperators ? "in_service" : "waiting";
     }
 
-    if (chat.assigned_to || chat.assignedTo) {
+    if (hasAssignedOperators) {
       return "in_service";
     }
 
