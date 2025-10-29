@@ -28,9 +28,16 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
     let active = true;
 
     const loadUserCredentials = async () => {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !userData?.user?.id) {
+        return;
+      }
+
       const { data: existing } = await supabase
         .from('credentials')
         .select('id')
+        .eq('user_id', userData.user.id)
         .order('created_at', { ascending: false })
         .limit(1);
 
@@ -61,9 +68,9 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
     setLoading(true);
 
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
 
-      if (sessionError || !sessionData?.session?.user?.id) {
+      if (userError || !userData?.user?.id) {
         toast({
           title: "Erro",
           description: "Não foi possível identificar o usuário autenticado",
@@ -72,7 +79,7 @@ export const CredentialSetup = ({ onSetupComplete }: CredentialSetupProps) => {
         return;
       }
 
-      const userId = sessionData.session.user.id;
+      const userId = userData.user.id;
 
       // Insert credential into database
       const { data, error } = await supabase
