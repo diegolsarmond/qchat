@@ -118,7 +118,7 @@ const handler = async (req: Request): Promise<Response> => {
       const errorText = await chatsResponse.text();
       console.error('[UAZ Fetch Chats] UAZ API error:', errorText);
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch chats' }),
+        JSON.stringify({ error: errorText || 'Failed to fetch chats' }),
         { status: chatsResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
