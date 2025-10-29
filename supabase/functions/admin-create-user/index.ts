@@ -117,31 +117,6 @@ serve(async (req) => {
       );
     }
 
-    const createdUserId = data.user?.id ?? null;
-
-    if (createdUserId) {
-      const { data: adminMemberships, error: adminMembershipError } = await supabaseClient
-        .from("credential_members")
-        .select("credential_id")
-        .eq("user_id", authData.user.id);
-
-      if (adminMembershipError) {
-        console.error("[Admin Create User] Failed to load admin memberships", adminMembershipError.message);
-      } else if (adminMemberships && adminMemberships.length > 0) {
-        const upsertPayload = adminMemberships.map((membership) => ({
-          credential_id: membership.credential_id,
-          user_id: createdUserId,
-          role: "agent",
-        }));
-
-        const { error: upsertError } = await supabaseClient
-          .from("credential_members")
-          .upsert(upsertPayload, { onConflict: "credential_id,user_id" });
-
-        if (upsertError) {
-          console.error("[Admin Create User] Failed to add user to credential members", upsertError.message);
-        }
-      }
     const userId = data.user?.id ?? null;
 
     if (!userId) {
@@ -161,11 +136,9 @@ serve(async (req) => {
     })();
     const finalName = nameInput || fallbackName;
 
-    const { error: upsertError } = await supabaseClient.from("users").upsert({
-      id: userId,
-      email,
-      name: finalName,
-    });
+    const { error: upsertError } = await supabaseClient
+      .from("users")
+      .upsert({ id: userId, email, name: finalName }, { onConflict: "id" });
 
     if (upsertError) {
       console.error("[Admin Create User] Failed to upsert user", upsertError.message);
@@ -185,6 +158,29 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         },
       );
+    }
+
+    const { data: adminMemberships, error: adminMembershipError } = await supabaseClient
+      .from("credential_members")
+      .select("credential_id")
+      .eq("user_id", authData.user.id);
+
+    if (adminMembershipError) {
+      console.error("[Admin Create User] Failed to load admin memberships", adminMembershipError.message);
+    } else if (adminMemberships && adminMemberships.length > 0) {
+      const upsertPayload = adminMemberships.map((membership) => ({
+        credential_id: membership.credential_id,
+        user_id: userId,
+        role: "agent",
+      }));
+
+      const { error: membershipUpsertError } = await supabaseClient
+        .from("credential_members")
+        .upsert(upsertPayload, { onConflict: "credential_id,user_id" });
+
+      if (membershipUpsertError) {
+        console.error("[Admin Create User] Failed to add user to credential members", membershipUpsertError.message);
+      }
     }
 
     return new Response(

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { Search, MoreVertical, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -77,7 +78,7 @@ export const ChatSidebar = ({
   phoneNumber,
 }: ChatSidebarProps) => {
   const navigate = useNavigate();
-  const getInitials = (name: string) => {
+const getInitials = (name: string) => {
     return name
       .split(" ")
       .map(n => n[0])
@@ -86,19 +87,42 @@ export const ChatSidebar = ({
       .slice(0, 2);
   };
 
+const parseHexColor = (value: string) => {
+  const hex = value.replace(/[^0-9a-fA-F]/g, "");
+  if (hex.length === 3) {
+    const [r, g, b] = hex.split("");
+    return {
+      r: parseInt(r + r, 16),
+      g: parseInt(g + g, 16),
+      b: parseInt(b + b, 16),
+    };
+  }
+  if (hex.length === 6) {
+    return {
+      r: parseInt(hex.slice(0, 2), 16),
+      g: parseInt(hex.slice(2, 4), 16),
+      b: parseInt(hex.slice(4, 6), 16),
+    };
+  }
+  return null;
+};
+
+const getLabelBadgeStyle = (color?: string) => {
+  if (!color) {
+    return undefined;
+  }
+  const rgb = parseHexColor(color);
+  if (!rgb) {
+    return { backgroundColor: color } as CSSProperties;
+  }
+  const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+  const textColor = luminance > 0.5 ? "#111827" : "#F9FAFB";
+  return { backgroundColor: color, color: textColor } as CSSProperties;
+};
+
   const displayProfileName = profileName?.trim() || "Perfil sem nome";
   const displayPhoneNumber = phoneNumber?.trim() || "Número não disponível";
   const profileInitial = displayProfileName.charAt(0).toUpperCase() || "U";
-
-  const getAssignedLabels = (chat: Chat) => {
-    if (chat.assignedUserNames && chat.assignedUserNames.length > 0) {
-      return chat.assignedUserNames;
-    }
-    if (Array.isArray(chat.assignedTo)) {
-      return chat.assignedTo;
-    }
-    return chat.assignedTo ? [chat.assignedTo] : [];
-  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -205,8 +229,6 @@ export const ChatSidebar = ({
       {/* Chat List */}
       <ScrollArea className="flex-1">
         {filteredChats.map((chat) => {
-          const assignedLabels = getAssignedLabels(chat);
-
           return (
             <div
               key={chat.id}
@@ -246,12 +268,16 @@ export const ChatSidebar = ({
                   )}
                 </div>
 
-                {assignedLabels.length > 0 && (
+                {chat.labels && chat.labels.length > 0 && (
                   <div className="mt-1 flex flex-wrap items-center gap-1">
-                    <span className="text-xs text-muted-foreground">Atribuído:</span>
-                    {assignedLabels.map((label) => (
-                      <Badge key={label} variant="outline" className="text-xs">
-                        {label}
+                    {chat.labels.map(label => (
+                      <Badge
+                        key={label.id}
+                        variant="secondary"
+                        className="text-xs"
+                        style={getLabelBadgeStyle(label.color)}
+                      >
+                        {label.name}
                       </Badge>
                     ))}
                   </div>

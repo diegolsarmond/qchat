@@ -98,16 +98,20 @@ serve(async (req) => {
     }
 
     let isMember = false;
+    let membershipRole: string | null = null;
 
     if (credential && userId) {
       const { data: membership } = await supabaseClient
         .from('credential_members')
-        .select('user_id')
+        .select('user_id, role')
         .eq('credential_id', credentialId)
         .eq('user_id', userId)
         .maybeSingle();
 
       isMember = Boolean(membership);
+      if (membership && typeof membership.role === 'string') {
+        membershipRole = membership.role;
+      }
     }
 
     const ownership = ensureCredentialOwnership(credential, userId, corsHeaders, { isMember });
@@ -118,21 +122,11 @@ serve(async (req) => {
 
     const ownedCredential = ownership.credential;
 
-    if (userId && ownedCredential.user_id && ownedCredential.user_id !== userId) {
-      return new Response(
-        JSON.stringify({ error: "Forbidden" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
     let chatQuery = supabaseClient
       .from("chats")
-      .select("wa_chat_id")
-      .eq("id", chatId);
-
-    if (userId) {
-      chatQuery = chatQuery.eq("user_id", userId);
-    }
+      .select("wa_chat_id, credential_id, assigned_to")
+      .eq("id", chatId)
+      .eq("credential_id", credentialId);
 
     const { data: chat, error: chatError } = await chatQuery.single();
 
@@ -140,6 +134,17 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: "Chat not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const normalizedRole = typeof membershipRole === "string" ? membershipRole.toLowerCase() : null;
+    const isCredentialOwner = ownedCredential.user_id === userId;
+    const hasElevatedMembership = normalizedRole === "owner" || normalizedRole === "admin";
+
+    if (!isCredentialOwner && !hasElevatedMembership && userId && chat.assigned_to !== userId) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -430,7 +435,7 @@ serve(async (req) => {
       const errorText = await messageResponse.text();
       console.error("[UAZ Send Message] UAZ API error:", errorText);
       return new Response(
-        JSON.stringify({ error: "Failed to send message" }),
+        JSON.stringify({ error: errorText || "Failed to send message" }),
         { status: messageResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }

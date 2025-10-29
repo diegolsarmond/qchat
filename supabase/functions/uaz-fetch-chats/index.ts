@@ -92,6 +92,10 @@ const handler = async (req: Request): Promise<Response> => {
     }
     const ownedCredential = ownership.credential;
 
+    const credentialOwnerId = typeof ownedCredential.user_id === 'string' && ownedCredential.user_id.length > 0
+      ? ownedCredential.user_id
+      : null;
+
     console.log('[UAZ Fetch Chats] Fetching from UAZ API');
 
     // Fetch chats from UAZ API using POST /chat/find
@@ -114,7 +118,7 @@ const handler = async (req: Request): Promise<Response> => {
       const errorText = await chatsResponse.text();
       console.error('[UAZ Fetch Chats] UAZ API error:', errorText);
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch chats' }),
+        JSON.stringify({ error: errorText || 'Failed to fetch chats' }),
         { status: chatsResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -130,30 +134,67 @@ const handler = async (req: Request): Promise<Response> => {
         supabaseClient,
         credentialId,
         chats,
-        credentialUserId: ownedCredential.user_id ?? undefined,
+        credentialUserId: credentialOwnerId ?? undefined,
       });
     } catch (upsertError) {
       console.error('[UAZ Fetch Chats] Failed to upsert chats:', upsertError);
     }
 
     // Fetch updated chats from database with pagination
+    let shouldFilterByUserId = Boolean(credentialOwnerId);
+
+    if (shouldFilterByUserId) {
+      const { data: scopedData } = await supabaseClient
+        .from('chats')
+        .select('user_id')
+        .eq('credential_id', credentialId)
+        .not('user_id', 'is', null)
+        .limit(1);
+
+      if (!scopedData || scopedData.length === 0) {
+        shouldFilterByUserId = false;
+      }
+    }
+
     let chatsQuery = supabaseClient
       .from('chats')
-      .select('*', { count: 'exact' })
+      .select('*, chat_labels(label:labels(id,name,color))', { count: 'exact' })
       .eq('credential_id', credentialId)
       .order('last_message_timestamp', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (ownedCredential.user_id) {
-      chatsQuery = chatsQuery.eq('user_id', ownedCredential.user_id);
+    if (shouldFilterByUserId && credentialOwnerId) {
+      chatsQuery = chatsQuery.eq('user_id', credentialOwnerId);
     }
 
     const { data: dbChats, error: dbError, count } = await chatsQuery;
 
-    const normalizedChats = (dbChats || []).map((chat) => ({
-      ...chat,
-      attendance_status: chat.attendance_status ?? 'waiting',
-    }));
+    const normalizedChats = (dbChats || []).map((chat) => {
+      const chatLabels = Array.isArray((chat as { chat_labels?: unknown }).chat_labels)
+        ? (chat as { chat_labels: Array<{ label?: { id?: unknown; name?: unknown; color?: unknown } | null }> }).chat_labels
+        : [];
+
+      const labels = chatLabels
+        .map((item) => {
+          const label = item?.label;
+          const id = typeof label?.id === 'string' ? label.id : null;
+          if (!id) {
+            return null;
+          }
+          const name = typeof label?.name === 'string' ? label.name : '';
+          const color = typeof label?.color === 'string' ? label.color : null;
+          return { id, name, color };
+        })
+        .filter((value): value is { id: string; name: string; color: string | null } => Boolean(value));
+
+      const { chat_labels, ...rest } = chat as { chat_labels?: unknown } & Record<string, unknown>;
+
+      return {
+        ...rest,
+        attendance_status: (rest.attendance_status as string | null | undefined) ?? 'waiting',
+        labels,
+      };
+    });
 
     if (dbError) {
       console.error('[UAZ Fetch Chats] Failed to fetch from DB:', dbError);

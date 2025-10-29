@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { CredentialSetup } from "@/components/CredentialSetup";
 import { QRCodeScanner } from "@/components/QRCodeScanner";
 import { ChatSidebar } from "@/components/ChatSidebar";
@@ -10,9 +10,11 @@ import {
   Chat,
   ChatAttendanceStatus,
   ChatFilter,
+  Label,
   Message,
   User as WhatsAppUser,
   SendMessagePayload,
+  Label,
 } from "@/types/whatsapp";
 import { mergeFetchedMessages } from "@/lib/message-order";
 import {
@@ -63,6 +65,14 @@ const Index = () => {
     phoneNumber: null as string | null,
   });
   const { toast } = useToast();
+  const connectionCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearConnectionInterval = useCallback(() => {
+    if (connectionCheckIntervalRef.current) {
+      clearInterval(connectionCheckIntervalRef.current);
+      connectionCheckIntervalRef.current = null;
+    }
+  }, []);
 
   const fetchCredentialProfile = useCallback(
     async (id: string) => {
@@ -95,6 +105,33 @@ const Index = () => {
     setCredentialProfile({ profileName: null, phoneNumber: null });
   }, []);
 
+  const clearConnectionState = useCallback(() => {
+    setIsConnected(false);
+    setSelectedChat(null);
+    setChats([]);
+    setMessages([]);
+    setAssignDialogOpen(false);
+    setChatToAssign(null);
+    setMessagePagination(createInitialMessagePagination(MESSAGE_PAGE_SIZE));
+    setShowSidebar(true);
+    setIsLoadingMoreMessages(false);
+    setIsPrependingMessages(false);
+    clearCredentialProfile();
+
+    if (typeof window !== "undefined") {
+      window.localStorage?.removeItem("activeCredentialId");
+    }
+  }, [clearCredentialProfile]);
+
+  const handleConnectionLost = useCallback(() => {
+    clearConnectionInterval();
+    clearConnectionState();
+    toast({
+      title: "Desconectado",
+      description: "Conexão perdida. Escaneie o QR code novamente.",
+    });
+  }, [clearConnectionInterval, clearConnectionState, toast]);
+
   const usersById = useMemo(() => {
     const map: Record<string, string> = {};
     users.forEach((u) => {
@@ -102,6 +139,18 @@ const Index = () => {
     });
     return map;
   }, [users]);
+
+  const fetchUsers = useCallback(async () => {
+    const { data } = await supabase.from('users').select('*');
+    if (data) {
+      setUsers(data.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        avatar: u.avatar || undefined,
+      })));
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -176,19 +225,27 @@ const Index = () => {
 
   // Fetch users on mount
   useEffect(() => {
-    const fetchUsers = async () => {
-      const { data } = await supabase.from('users').select('*');
-      if (data) {
-        setUsers(data.map(u => ({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          avatar: u.avatar || undefined,
-        })));
-      }
-    };
     fetchUsers();
-  }, []);
+
+    const channel = supabase
+      .channel('users-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'users',
+        },
+        () => {
+          fetchUsers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [fetchUsers]);
 
   // Fetch chats when connected and setup realtime
   useEffect(() => {
@@ -305,50 +362,43 @@ const Index = () => {
         )
         .subscribe();
 
+      const chatLabelsChannel = supabase
+        .channel('chat-labels-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'chat_labels',
+          },
+          () => {
+            fetchChats();
+          }
+        )
+        .subscribe();
+
       return () => {
         supabase.removeChannel(chatsChannel);
         supabase.removeChannel(messagesChannel);
+        supabase.removeChannel(chatLabelsChannel);
       };
     }
   }, [isConnected, credentialId, selectedChat]);
 
-  const hasAssignments = (value: unknown) => {
-    if (Array.isArray(value)) {
-      return value.length > 0;
-    }
-
-    if (typeof value === "string") {
-      return value.trim().length > 0;
-    }
-
-    return Boolean(value);
-  };
-
   const deriveAttendanceStatus = (chat: any): Chat["attendanceStatus"] => {
-    const source =
-      (typeof chat.attendance_status === "string" && chat.attendance_status) ||
-      (typeof chat.attendanceStatus === "string" && chat.attendanceStatus) ||
-      (typeof chat.status === "string" && chat.status) ||
+    const raw =
+      (typeof chat.attendance_status === "string" && chat.attendance_status.trim()) ||
+      (typeof chat.attendanceStatus === "string" && chat.attendanceStatus.trim()) ||
       "";
 
-    const normalized = source.toLowerCase();
-    const hasAssignedOperators =
-      hasAssignments(chat.assigned_to) || hasAssignments(chat.assignedTo);
+    const normalized = raw.toLowerCase();
 
-    if (["finished", "finalized", "closed"].includes(normalized)) {
+    if (normalized === "in_service") {
+      return "in_service";
+    }
+
+    if (normalized === "finished") {
       return "finished";
-    }
-
-    if (["in_service", "in progress", "in_progress", "active"].includes(normalized)) {
-      return "in_service";
-    }
-
-    if (["waiting", "pending", "queued"].includes(normalized)) {
-      return hasAssignedOperators ? "in_service" : "waiting";
-    }
-
-    if (hasAssignedOperators) {
-      return "in_service";
     }
 
     return "waiting";
@@ -366,8 +416,21 @@ const Index = () => {
       if (error) throw error;
 
       if (data?.chats) {
-        setChats(data.chats.map((c: any) => {
+        const mappedChats: Chat[] = data.chats.map((c: any) => {
           const lastMessageDate = c.last_message_timestamp ? new Date(c.last_message_timestamp) : null;
+          const labels = Array.isArray(c.labels)
+            ? c.labels
+                .map((label: any) => {
+                  const id = typeof label?.id === 'string' ? label.id : null;
+                  if (!id) {
+                    return null;
+                  }
+                  const name = typeof label?.name === 'string' ? label.name : '';
+                  const color = typeof label?.color === 'string' ? label.color : null;
+                  return { id, name, color } as Label;
+                })
+                .filter((label): label is Label => Boolean(label))
+            : [];
 
           return {
             id: c.id,
@@ -382,8 +445,73 @@ const Index = () => {
             isGroup: c.is_group || false,
             assignedTo: c.assigned_to || undefined,
             attendanceStatus: deriveAttendanceStatus(c),
+            labels: labels.length > 0 ? labels : undefined,
           };
-        }));
+        });
+
+        let enrichedChats = mappedChats;
+        const chatIds = mappedChats.map(chat => chat.id);
+
+        if (chatIds.length > 0) {
+          const { data: assignments, error: assignmentsError } = await supabase
+            .from('chat_labels')
+            .select('chat_id, label_id')
+            .in('chat_id', chatIds);
+
+          if (assignmentsError) {
+            console.error('Error fetching chat labels:', assignmentsError);
+          } else if (assignments && assignments.length > 0) {
+            const labelIds = Array.from(new Set(assignments.map(item => item.label_id)));
+            let labelsById: Record<string, Label> = {};
+
+            if (labelIds.length > 0) {
+              const { data: labelRows, error: labelsError } = await supabase
+                .from('labels')
+                .select('id, name, color, credential_id')
+                .in('id', labelIds);
+
+              if (labelsError) {
+                console.error('Error fetching labels:', labelsError);
+              } else if (labelRows) {
+                labelsById = labelRows.reduce((acc, row) => {
+                  acc[row.id] = {
+                    id: row.id,
+                    name: row.name,
+                    color: row.color,
+                    credentialId: row.credential_id ?? undefined,
+                  };
+                  return acc;
+                }, {} as Record<string, Label>);
+              }
+            }
+
+            const labelsByChat = new Map<string, Label[]>();
+
+            assignments.forEach(item => {
+              const label = labelsById[item.label_id];
+              if (!label) {
+                return;
+              }
+              const list = labelsByChat.get(item.chat_id) ?? [];
+              list.push(label);
+              labelsByChat.set(item.chat_id, list);
+            });
+
+            enrichedChats = mappedChats.map(chat => ({
+              ...chat,
+              labels: labelsByChat.get(chat.id) ?? [],
+            }));
+          }
+        }
+
+        setChats(enrichedChats);
+        setSelectedChat(prev => {
+          if (!prev) {
+            return prev;
+          }
+          const next = enrichedChats.find(chat => chat.id === prev.id);
+          return next ? { ...next } : prev;
+        });
       }
     } catch (error) {
       console.error('Error fetching chats:', error);
@@ -452,9 +580,17 @@ const Index = () => {
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
+      const { message: rawMessage, error: rawError } = typeof error === 'object' && error !== null
+        ? (error as { message?: unknown; error?: unknown })
+        : { message: undefined, error: undefined };
+      const parsedMessage = typeof rawMessage === 'string' && rawMessage.trim().length > 0
+        ? rawMessage
+        : typeof rawError === 'string' && rawError.trim().length > 0
+          ? rawError
+          : undefined;
       toast({
         title: "Erro",
-        description: "Falha ao carregar mensagens",
+        description: parsedMessage ?? "Falha ao carregar mensagens",
         variant: "destructive",
       });
     } finally {
@@ -488,6 +624,7 @@ const Index = () => {
     }
 
     setIsDisconnecting(true);
+    clearConnectionInterval();
 
     try {
       const { error } = await supabase.functions.invoke('uaz-disconnect-instance', {
@@ -498,20 +635,7 @@ const Index = () => {
         throw error;
       }
 
-      setIsConnected(false);
-      setSelectedChat(null);
-      setChats([]);
-      setMessages([]);
-      setAssignDialogOpen(false);
-      setChatToAssign(null);
-      setMessagePagination(createInitialMessagePagination(MESSAGE_PAGE_SIZE));
-      setShowSidebar(true);
-      setIsLoadingMoreMessages(false);
-      setIsPrependingMessages(false);
-
-      if (typeof window !== 'undefined') {
-        window.localStorage?.removeItem("activeCredentialId");
-      }
+      clearConnectionState();
 
       toast({
         title: "Desconectado",
@@ -553,6 +677,37 @@ const Index = () => {
       fetchCredentialProfile(credentialId);
     }
   }, [isConnected, credentialId, fetchCredentialProfile]);
+
+  useEffect(() => {
+    if (!credentialId || !isConnected) {
+      return;
+    }
+
+    const checkConnection = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('uaz-get-qr', {
+          body: { credentialId },
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        if (data?.connected === false || data?.status !== 'connected') {
+          handleConnectionLost();
+        }
+      } catch (error) {
+        console.error('Error checking connection status:', error);
+      }
+    };
+
+    checkConnection();
+    connectionCheckIntervalRef.current = setInterval(checkConnection, 60000);
+
+    return () => {
+      clearConnectionInterval();
+    };
+  }, [credentialId, isConnected, handleConnectionLost, clearConnectionInterval]);
 
   const handleSelectChat = async (chat: Chat) => {
     setSelectedChat(chat);
@@ -829,6 +984,118 @@ const Index = () => {
     fetchMessages(selectedChat.id);
   };
 
+  const handleAssignLabelToChat = useCallback(
+    async (chatId: string, label: Label) => {
+      const currentChat = chats.find(chat => chat.id === chatId) || (selectedChat?.id === chatId ? selectedChat : null);
+      if (currentChat?.labels?.some(item => item.id === label.id)) {
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('chat_labels')
+          .insert({ chat_id: chatId, label_id: label.id });
+
+        if (error) {
+          throw error;
+        }
+
+        setChats(prev =>
+          prev.map(chat => {
+            if (chat.id !== chatId) {
+              return chat;
+            }
+            const previous = chat.labels ?? [];
+            if (previous.some(item => item.id === label.id)) {
+              return chat;
+            }
+            const next = [...previous, label];
+            next.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+            return { ...chat, labels: next };
+          })
+        );
+
+        setSelectedChat(prev => {
+          if (!prev || prev.id !== chatId) {
+            return prev;
+          }
+          const previous = prev.labels ?? [];
+          if (previous.some(item => item.id === label.id)) {
+            return prev;
+          }
+          const next = [...previous, label];
+          next.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+          return { ...prev, labels: next };
+        });
+      } catch (unknownError) {
+        console.error('Error assigning label:', unknownError);
+        toast({
+          title: "Erro",
+          description: "Não foi possível atribuir a etiqueta",
+          variant: "destructive",
+        });
+        throw unknownError;
+      }
+    },
+    [chats, selectedChat, toast]
+  );
+
+  const handleRemoveLabelFromChat = useCallback(
+    async (chatId: string, label: Label) => {
+      const currentChat = chats.find(chat => chat.id === chatId) || (selectedChat?.id === chatId ? selectedChat : null);
+      if (!currentChat?.labels?.some(item => item.id === label.id)) {
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('chat_labels')
+          .delete()
+          .eq('chat_id', chatId)
+          .eq('label_id', label.id);
+
+        if (error) {
+          throw error;
+        }
+
+        setChats(prev =>
+          prev.map(chat => {
+            if (chat.id !== chatId) {
+              return chat;
+            }
+            const previous = chat.labels ?? [];
+            if (!previous.some(item => item.id === label.id)) {
+              return chat;
+            }
+            const next = previous.filter(item => item.id !== label.id);
+            return { ...chat, labels: next };
+          })
+        );
+
+        setSelectedChat(prev => {
+          if (!prev || prev.id !== chatId) {
+            return prev;
+          }
+          const previous = prev.labels ?? [];
+          if (!previous.some(item => item.id === label.id)) {
+            return prev;
+          }
+          const next = previous.filter(item => item.id !== label.id);
+          return { ...prev, labels: next };
+        });
+      } catch (unknownError) {
+        console.error('Error removing label:', unknownError);
+        toast({
+          title: "Erro",
+          description: "Não foi possível remover a etiqueta",
+          variant: "destructive",
+        });
+        throw unknownError;
+      }
+    },
+    [chats, selectedChat, toast]
+  );
+
   // Setup flow
   if (!credentialId) {
     return <CredentialSetup onSetupComplete={handleSetupComplete} />;
@@ -875,6 +1142,8 @@ const Index = () => {
           showSidebar={showSidebar}
           onShowSidebar={() => setShowSidebar(true)}
           credentialId={credentialId}
+          onAssignLabel={handleAssignLabelToChat}
+          onRemoveLabel={handleRemoveLabelFromChat}
         />
       </div>
 

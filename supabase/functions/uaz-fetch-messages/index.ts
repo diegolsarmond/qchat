@@ -88,16 +88,20 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     let isMember = false;
+    let membershipRole: string | null = null;
 
     if (credential && userId) {
       const { data: membership } = await supabaseClient
         .from('credential_members')
-        .select('user_id')
+        .select('user_id, role')
         .eq('credential_id', credentialId)
         .eq('user_id', userId)
         .maybeSingle();
 
       isMember = Boolean(membership);
+      if (membership && typeof membership.role === 'string') {
+        membershipRole = membership.role;
+      }
     }
 
     const ownership = ensureCredentialOwnership(credential, userId, corsHeaders, { isMember });
@@ -107,29 +111,9 @@ const handler = async (req: Request): Promise<Response> => {
     }
     const ownedCredential = ownership.credential;
 
-    // Fetch chat scoped to the authenticated owner/credential
-    let chatQuery = supabaseClient
+    const { data: chat, error: chatError } = await supabaseClient
       .from('chats')
-      .select('id, wa_chat_id, credential_id, user_id')
-      .eq('id', chatId)
-      .eq('credential_id', credentialId);
-
-    if (userId) {
-      chatQuery = chatQuery.eq('user_id', userId);
-    }
-
-    const { data: chat, error: chatError } = await chatQuery.single();
-    // Fetch chat
-    let chatQuery = supabaseClient
-      .from('chats')
-      .select('wa_chat_id')
-      .eq('id', chatId);
-
-    if (ownedCredential.user_id) {
-      chatQuery = chatQuery.eq('user_id', ownedCredential.user_id);
-    }
-
-    const { data: chat, error: chatError } = await chatQuery.single();
+      .select('wa_chat_id, assigned_to, credential_id')
       .eq('id', chatId)
       .eq('credential_id', credentialId)
       .single();
@@ -138,6 +122,17 @@ const handler = async (req: Request): Promise<Response> => {
       return new Response(
         JSON.stringify({ error: 'Chat not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const normalizedRole = typeof membershipRole === 'string' ? membershipRole.toLowerCase() : null;
+    const isCredentialOwner = ownedCredential.user_id === userId;
+    const hasElevatedMembership = normalizedRole === 'owner' || normalizedRole === 'admin';
+
+    if (!isCredentialOwner && !hasElevatedMembership && userId && chat.assigned_to !== userId) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -163,7 +158,7 @@ const handler = async (req: Request): Promise<Response> => {
       const errorText = await messagesResponse.text();
       console.error('[UAZ Fetch Messages] UAZ API error:', errorText);
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch messages' }),
+        JSON.stringify({ error: errorText || 'Failed to fetch messages' }),
         { status: messagesResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -178,10 +173,26 @@ const handler = async (req: Request): Promise<Response> => {
       messages,
       chatId,
       credentialId,
-      credentialUserId: ownedCredential.user_id ?? undefined,
+      credentialUserId: credentialOwnerId ?? undefined,
     });
 
     // Fetch updated messages from database with pagination
+    let shouldFilterMessagesByUserId = Boolean(credentialOwnerId);
+
+    if (shouldFilterMessagesByUserId) {
+      const { data: messageScope } = await supabaseClient
+        .from('messages')
+        .select('user_id')
+        .eq('chat_id', chatId)
+        .eq('credential_id', credentialId)
+        .not('user_id', 'is', null)
+        .limit(1);
+
+      if (!messageScope || messageScope.length === 0) {
+        shouldFilterMessagesByUserId = false;
+      }
+    }
+
     let messagesQuery = supabaseClient
       .from('messages')
       .select('*', { count: 'exact' })
@@ -190,8 +201,8 @@ const handler = async (req: Request): Promise<Response> => {
       .order('message_timestamp', { ascending: order !== 'desc' })
       .range(safeOffset, safeOffset + safeLimit - 1);
 
-    if (ownedCredential.user_id) {
-      messagesQuery = messagesQuery.eq('user_id', ownedCredential.user_id);
+    if (shouldFilterMessagesByUserId && credentialOwnerId) {
+      messagesQuery = messagesQuery.eq('user_id', credentialOwnerId);
     }
 
     const { data: dbMessages, error: dbError, count } = await messagesQuery;

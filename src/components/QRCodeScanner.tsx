@@ -40,8 +40,12 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
     try {
       setStatus("Verificando status da conexão...");
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
       const { data, error } = await supabase.functions.invoke('uaz-get-qr', {
         body: { credentialId },
+        ...(accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : {}),
       });
 
       if (error) {
@@ -141,6 +145,7 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
         variant: "destructive",
       });
       onStatusChange?.('error');
+      ensurePolling();
     }
     finally {
       isFetchingRef.current = false;
