@@ -169,6 +169,15 @@ serve(async (req) => {
 
     if (upsertError) {
       console.error("[Admin Create User] Failed to upsert user", upsertError.message);
+      const { error: deleteError } = await supabaseClient.auth.admin.deleteUser(userId);
+
+      if (deleteError) {
+        console.error(
+          "[Admin Create User] Failed to rollback auth user after upsert failure",
+          deleteError.message,
+        );
+      }
+
       return new Response(
         JSON.stringify({ error: upsertError.message }),
         {
