@@ -312,43 +312,20 @@ const Index = () => {
     }
   }, [isConnected, credentialId, selectedChat]);
 
-  const hasAssignments = (value: unknown) => {
-    if (Array.isArray(value)) {
-      return value.length > 0;
-    }
-
-    if (typeof value === "string") {
-      return value.trim().length > 0;
-    }
-
-    return Boolean(value);
-  };
-
   const deriveAttendanceStatus = (chat: any): Chat["attendanceStatus"] => {
-    const source =
-      (typeof chat.attendance_status === "string" && chat.attendance_status) ||
-      (typeof chat.attendanceStatus === "string" && chat.attendanceStatus) ||
-      (typeof chat.status === "string" && chat.status) ||
+    const raw =
+      (typeof chat.attendance_status === "string" && chat.attendance_status.trim()) ||
+      (typeof chat.attendanceStatus === "string" && chat.attendanceStatus.trim()) ||
       "";
 
-    const normalized = source.toLowerCase();
-    const hasAssignedOperators =
-      hasAssignments(chat.assigned_to) || hasAssignments(chat.assignedTo);
+    const normalized = raw.toLowerCase();
 
-    if (["finished", "finalized", "closed"].includes(normalized)) {
+    if (normalized === "in_service") {
+      return "in_service";
+    }
+
+    if (normalized === "finished") {
       return "finished";
-    }
-
-    if (["in_service", "in progress", "in_progress", "active"].includes(normalized)) {
-      return "in_service";
-    }
-
-    if (["waiting", "pending", "queued"].includes(normalized)) {
-      return hasAssignedOperators ? "in_service" : "waiting";
-    }
-
-    if (hasAssignedOperators) {
-      return "in_service";
     }
 
     return "waiting";
