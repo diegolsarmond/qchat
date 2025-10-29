@@ -140,6 +140,7 @@ export const QRCodeScanner = ({ credentialId, onConnected, onStatusChange }: QRC
         variant: "destructive",
       });
       onStatusChange?.('error');
+      ensurePolling();
     }
     finally {
       isFetchingRef.current = false;
