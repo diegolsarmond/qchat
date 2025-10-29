@@ -71,11 +71,11 @@ export type Database = {
           {
             foreignKeyName: "chats_credential_id_fkey"
             columns: ["credential_id"]
-            isOneToOne: false
-          referencedRelation: "credentials"
-          referencedColumns: ["id"]
-        },
-      ]
+            isOneToOne: false,
+            referencedRelation: "credentials"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       chat_labels: {
         Row: {
