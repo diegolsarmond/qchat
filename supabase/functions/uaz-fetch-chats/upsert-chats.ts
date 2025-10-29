@@ -1,17 +1,20 @@
 export interface PersistChatsParams {
   supabaseClient: any;
   credentialId: string;
+  userId?: string | null;
   chats: Array<Record<string, unknown>>;
 }
 
 export function mapChatsToRecords(params: {
   chats: Array<Record<string, unknown>>;
   credentialId: string;
+  userId?: string | null;
 }) {
-  const { chats, credentialId } = params;
+  const { chats, credentialId, userId } = params;
 
   return chats.map((chat) => ({
     credential_id: credentialId,
+    ...(userId ? { user_id: userId } : {}),
     wa_chat_id: chat.wa_chatid,
     name: (chat.name as string) || (chat.wa_name as string) || (chat.wa_contactName as string) || 'Unknown',
     last_message: (chat.wa_lastMessageTextVote as string) || '',
@@ -23,8 +26,8 @@ export function mapChatsToRecords(params: {
 }
 
 export async function persistChats(params: PersistChatsParams) {
-  const { supabaseClient, credentialId, chats } = params;
-  const records = mapChatsToRecords({ chats, credentialId });
+  const { supabaseClient, credentialId, userId, chats } = params;
+  const records = mapChatsToRecords({ chats, credentialId, userId });
 
   if (records.length === 0) {
     return;
