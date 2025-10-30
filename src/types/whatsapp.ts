@@ -54,6 +54,7 @@ export interface Message {
   documentName?: string;
   mediaUrl?: string;
   mediaBase64?: string;
+  isPrivate?: boolean;
   contactName?: string;
   contactPhone?: string;
   latitude?: number;
