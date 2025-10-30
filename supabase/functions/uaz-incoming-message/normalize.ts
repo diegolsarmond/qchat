@@ -85,6 +85,15 @@ const normalizeMessage = (
       media.timestamp,
     Date.now(),
   );
+  const messageTypeSource =
+    message.messageType ?? message.type ?? media.type ?? "text";
+  const mediaTypeSource =
+    message.mediaType ??
+    media.mediaType ??
+    media.mimetype ??
+    media.mimeType ??
+    media.type ??
+    "";
   return {
     waChatId,
     messageid:
@@ -97,8 +106,8 @@ const normalizeMessage = (
       `msg_${timestamp}`,
     text:
       toString(message.text ?? message.body ?? message.message ?? media.text ?? media.caption),
-    messageType: toString(message.messageType ?? message.type ?? media.type || "text").toLowerCase() || "text",
-    mediaType: toString(message.mediaType ?? media.mediaType ?? media.mimetype ?? media.mimeType ?? media.type || ""),
+    messageType: toString(messageTypeSource || "text").toLowerCase() || "text",
+    mediaType: toString(mediaTypeSource),
     caption: toString(message.caption ?? media.caption),
     documentName: toString(message.documentName ?? media.documentName ?? media.fileName ?? media.filename),
     mediaUrl: toString(message.mediaUrl ?? message.url ?? media.mediaUrl ?? media.url ?? media.link),
