@@ -1419,6 +1419,7 @@ export const ChatArea = ({
                       ? 'bg-[hsl(var(--whatsapp-message-out))]'
                       : 'bg-[hsl(var(--whatsapp-message-in))]'
                     }
+                    ${message.isPrivate ? 'ring-2 ring-primary' : ''}
                   `}
                 >
                   {renderMessageContent(message)}
