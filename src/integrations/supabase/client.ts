@@ -39,7 +39,7 @@ const envSource: EnvSource = loadBundlerEnv() ?? loadImportMetaEnv() ?? processE
 
 const DEFAULT_SUPABASE_URL = 'http://localhost:54321';
 const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'public-anon-key';
-const DEFAULT_SUPABASE_PROJECT_ID = undefined;
+const DEFAULT_SUPABASE_PROJECT_ID = 'default';
 
 const normalizeEnvValue = (value: string | undefined) => (typeof value === 'string' ? value.trim() : undefined);
 
