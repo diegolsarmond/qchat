@@ -32,7 +32,16 @@ const loadRegisterModule = () => {
       return { useNavigate: () => () => {}, Link: stubComponent() };
     }
     if (specifier === "@/integrations/supabase/client") {
-      return { supabase: { auth: { signUp: async () => ({ data: null, error: null }) } } };
+      return {
+        supabase: {
+          auth: { signUp: async () => ({ data: null, error: null }) },
+          from() {
+            return {
+              upsert: async () => ({ data: null, error: null }),
+            };
+          },
+        },
+      };
     }
     if (specifier === "@/hooks/use-toast") {
       return { useToast: () => ({ toast: () => {} }) };
@@ -78,7 +87,10 @@ test("performRegister realiza sign-up e redireciona após sucesso", async () => 
     password: "senha-forte",
     signUp: async (credentials) => {
       signUpCalls.push(credentials);
-      return { data: {}, error: null };
+      return {
+        data: { user: { id: 'user-1', email: credentials.email, user_metadata: {} } },
+        error: null,
+      };
     },
     toast: (payload) => {
       toastCalls.push(payload);

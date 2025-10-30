@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => {
     Object.entries({
       VITE_SUPABASE_URL: env.VITE_SUPABASE_URL,
       VITE_SUPABASE_PUBLISHABLE_KEY: env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      VITE_SUPABASE_PROJECT_ID: env.VITE_SUPABASE_PROJECT_ID,
     }).filter(([, value]) => typeof value === "string")
   ) satisfies Record<string, string>;
 
