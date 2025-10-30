@@ -11,6 +11,7 @@ declare const __SUPABASE_ENV__:
       VITE_SUPABASE_ANON_KEY?: string;
       VITE_SUPABASE_KEY?: string;
       VITE_SUPABASE_PUBLIC_KEY?: string;
+      VITE_SUPABASE_MANAGED_CUSTOM_DOMAIN?: string;
     })
   | undefined;
 
@@ -45,21 +46,35 @@ const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'public-anon-key';
 const DEFAULT_SUPABASE_PROJECT_ID = 'default';
 
 const normalizeEnvValue = (value: string | undefined) => (typeof value === 'string' ? value.trim() : undefined);
+const normalizeBooleanEnvValue = (value: string | undefined) => {
+  const normalized = normalizeEnvValue(value);
+  if (!normalized) {
+    return false;
+  }
+
+  return /^(1|true|t|yes|y|on)$/i.test(normalized);
+};
 
 const SUPABASE_PROJECT_ID = normalizeEnvValue(envSource.VITE_SUPABASE_PROJECT_ID) ?? DEFAULT_SUPABASE_PROJECT_ID;
 const SUPABASE_BASE_URL = normalizeEnvValue(envSource.VITE_SUPABASE_URL) ?? DEFAULT_SUPABASE_URL;
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
+const SUPABASE_MANAGED_CUSTOM_DOMAIN = normalizeBooleanEnvValue(
+  envSource.VITE_SUPABASE_MANAGED_CUSTOM_DOMAIN,
+);
 
 const shouldAppendProjectPath = (url: URL) => {
   if (LOCAL_HOSTNAMES.has(url.hostname)) {
     return false;
   }
 
-  if (url.hostname.endsWith('.supabase.co')) {
+  if (url.hostname.endsWith('.supabase.co') || url.hostname.endsWith('.supabase.in')) {
     return false;
   }
 
-  if (!url.port || url.port === '80' || url.port === '443') {
+  if (
+    SUPABASE_MANAGED_CUSTOM_DOMAIN &&
+    (!url.port || url.port === '80' || url.port === '443')
+  ) {
     return false;
   }
 
