@@ -198,8 +198,8 @@ const Admin = () => {
   const [labelEdits, setLabelEdits] = useState<Record<string, { name: string; color: string }>>({});
   const [updatingLabelIds, setUpdatingLabelIds] = useState<Record<string, boolean>>({});
   const [deletingLabelId, setDeletingLabelId] = useState<string | null>(null);
-  const [chatSummaries, setChatSummaries] = useState<ChatSummary[]>([]);
-  const [chatSummariesLoading, setChatSummariesLoading] = useState(false);
+  const [conversationSummaries, setConversationSummaries] = useState<ChatSummary[]>([]);
+  const [conversationSummariesLoading, setConversationSummariesLoading] = useState(false);
   const [conversationLabelFilter, setConversationLabelFilter] = useState<string>("all");
   const [attendanceSummaryFilter, setAttendanceSummaryFilter] = useState<string>("all");
   const [selectedChatIds, setSelectedChatIds] = useState<Record<string, boolean>>({});
@@ -889,13 +889,13 @@ const Admin = () => {
 
   const fetchChatSummaries = useCallback(async () => {
     if (!activeCredentialId) {
-      setChatSummaries([]);
+      setConversationSummaries([]);
       setSelectedChatIds({});
-      setChatSummariesLoading(false);
+      setConversationSummariesLoading(false);
       return;
     }
 
-    setChatSummariesLoading(true);
+    setConversationSummariesLoading(true);
 
     try {
       const { data, error } = await supabase
@@ -974,7 +974,7 @@ const Admin = () => {
 
       parsed.sort((a, b) => a.chatName.localeCompare(b.chatName, 'pt-BR'));
 
-      setChatSummaries(parsed);
+      setConversationSummaries(parsed);
       setSelectedChatIds((prev) => {
         const next: Record<string, boolean> = {};
         parsed.forEach((chat) => {
@@ -991,10 +991,10 @@ const Admin = () => {
         description: "Não foi possível obter as conversas com etiquetas",
         variant: "destructive",
       });
-      setChatSummaries([]);
+      setConversationSummaries([]);
       setSelectedChatIds({});
     } finally {
-      setChatSummariesLoading(false);
+      setConversationSummariesLoading(false);
     }
   }, [activeCredentialId, toast]);
 
@@ -1200,7 +1200,7 @@ const Admin = () => {
   const labelCounts = useMemo(() => {
     const counts = new Map<string, number>();
 
-    chatSummaries.forEach(chat => {
+    conversationSummaries.forEach(chat => {
       chat.labels.forEach(label => {
         counts.set(label.id, (counts.get(label.id) ?? 0) + 1);
       });
@@ -1212,7 +1212,7 @@ const Admin = () => {
       color: label.color,
       count: counts.get(label.id) ?? 0,
     }));
-  }, [chatSummaries, labels]);
+  }, [conversationSummaries, labels]);
 
   const labelCountsMap = useMemo(() => {
     return labelCounts.reduce<Record<string, number>>((acc, current) => {
@@ -1222,22 +1222,22 @@ const Admin = () => {
   }, [labelCounts]);
 
   const chatsWithoutLabelCount = useMemo(
-    () => chatSummaries.filter(chat => chat.labels.length === 0).length,
-    [chatSummaries],
+    () => conversationSummaries.filter(chat => chat.labels.length === 0).length,
+    [conversationSummaries],
   );
 
-  const totalChats = chatSummaries.length;
+  const totalChats = conversationSummaries.length;
 
   const attendanceOptions = useMemo(() => {
     const values = new Set<string>();
-    chatSummaries.forEach(chat => {
+    conversationSummaries.forEach(chat => {
       values.add(chat.attendanceStatus);
     });
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [chatSummaries]);
+  }, [conversationSummaries]);
 
   const filteredChatSummaries = useMemo(() => {
-    return chatSummaries.filter(chat => {
+    return conversationSummaries.filter(chat => {
       const matchesLabel =
         conversationLabelFilter === 'all'
           ? true
@@ -1248,7 +1248,7 @@ const Admin = () => {
           : chat.attendanceStatus === attendanceSummaryFilter;
       return matchesLabel && matchesAttendance;
     });
-  }, [attendanceSummaryFilter, chatSummaries, conversationLabelFilter]);
+  }, [attendanceSummaryFilter, conversationSummaries, conversationLabelFilter]);
 
   const filteredSelectedCount = useMemo(
     () => filteredChatSummaries.filter(chat => selectedChatIds[chat.chatId]).length,
@@ -1338,7 +1338,7 @@ const Admin = () => {
 
     try {
       const existing = new Set<string>();
-      chatSummaries.forEach(chat => {
+      conversationSummaries.forEach(chat => {
         if (chat.labels.some(label => label.id === bulkLabelId)) {
           existing.add(chat.chatId);
         }
@@ -1374,7 +1374,7 @@ const Admin = () => {
     } finally {
       setBulkLabelProcessing(false);
     }
-  }, [bulkLabelId, chatSummaries, fetchChatSummaries, selectedChatIds, toast]);
+  }, [bulkLabelId, conversationSummaries, fetchChatSummaries, selectedChatIds, toast]);
 
   const handleBulkRemove = useCallback(async () => {
     if (!bulkLabelId) {
@@ -1399,7 +1399,7 @@ const Admin = () => {
       return;
     }
 
-    const targets = chatSummaries
+    const targets = conversationSummaries
       .filter(chat => chat.labels.some(label => label.id === bulkLabelId) && chatIds.includes(chat.chatId))
       .map(chat => chat.chatId);
 
@@ -1437,7 +1437,7 @@ const Admin = () => {
     } finally {
       setBulkLabelProcessing(false);
     }
-  }, [bulkLabelId, chatSummaries, fetchChatSummaries, selectedChatIds, toast]);
+  }, [bulkLabelId, conversationSummaries, fetchChatSummaries, selectedChatIds, toast]);
 
   const handleExportCsv = useCallback(() => {
     if (labelCounts.length === 0 && chatsWithoutLabelCount === 0 && totalChats === 0) {
@@ -2020,13 +2020,13 @@ const Admin = () => {
                   <Button
                     variant="outline"
                     onClick={fetchChatSummaries}
-                    disabled={chatSummariesLoading}
+                    disabled={conversationSummariesLoading}
                   >
-                    {chatSummariesLoading ? "Atualizando..." : "Recarregar"}
+                    {conversationSummariesLoading ? "Atualizando..." : "Recarregar"}
                   </Button>
                   <Button
                     onClick={handleExportCsv}
-                    disabled={chatSummaries.length === 0 && labelCounts.length === 0 && chatsWithoutLabelCount === 0}
+                    disabled={conversationSummaries.length === 0 && labelCounts.length === 0 && chatsWithoutLabelCount === 0}
                   >
                     Exportar CSV
                   </Button>
@@ -2137,7 +2137,7 @@ const Admin = () => {
                             <Checkbox
                               checked={masterCheckboxState}
                               onCheckedChange={checked => handleToggleSelectAll(checked === true)}
-                              disabled={chatSummariesLoading || filteredChatSummaries.length === 0}
+                              disabled={conversationSummariesLoading || filteredChatSummaries.length === 0}
                             />
                           </TableHead>
                           <TableHead>Conversa</TableHead>
@@ -2147,7 +2147,7 @@ const Admin = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {chatSummariesLoading ? (
+                        {conversationSummariesLoading ? (
                           <TableRow>
                             <TableCell colSpan={5} className="py-6">
                               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -2296,7 +2296,8 @@ const Admin = () => {
     bulkLabelId,
     bulkLabelProcessing,
     chatSummaries,
-    chatSummariesLoading,
+    conversationSummaries,
+    conversationSummariesLoading,
     chatsWithoutLabelCount,
     conversationLabelFilter,
     editDialogOpen,
