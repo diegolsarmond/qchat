@@ -30,7 +30,7 @@ export const performLogin = async ({
 
   try {
     const { error } = await signInWithPassword({
-      email,
+      email: email.trim(),
       password,
     });
 
