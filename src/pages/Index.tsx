@@ -40,6 +40,7 @@ export const mapApiMessage = (m: any): Message => ({
   documentName: m.document_name,
   mediaUrl: m.media_url,
   mediaBase64: m.media_base64,
+  isPrivate: Boolean(m.is_private),
 });
 
 const Index = () => {
@@ -830,6 +831,7 @@ const Index = () => {
         documentName: payload.documentName,
         mediaUrl: payload.mediaUrl,
         mediaBase64: payload.mediaBase64,
+        isPrivate: Boolean(payload.isPrivate),
         contactName: payload.contactName,
         contactPhone: payload.contactPhone,
         latitude: payload.latitude,
