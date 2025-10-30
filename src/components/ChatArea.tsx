@@ -493,7 +493,10 @@ export const ChatArea = ({
   const messagesStartRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const orderedMessages = useMemo(() => [...messages], [messages]);
+  const orderedMessages = useMemo(
+    () => [...messages].sort((first, second) => first.timestamp.localeCompare(second.timestamp)),
+    [messages]
+  );
   const selectedLabelIds = useMemo(() => new Set((chat?.labels ?? []).map(label => label.id)), [chat?.labels]);
   const audioSourceCacheRef = useRef<Map<string, CachedAudioSource>>(new Map());
   const fetchAvailableLabels = useCallback(async () => {
