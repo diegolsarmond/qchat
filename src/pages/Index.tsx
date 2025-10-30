@@ -29,10 +29,18 @@ const formatTimestamp = (value: number | string | null | undefined) =>
 
 const extractMessageTimestamp = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) {
+    if (value < 1_000_000_000_000) {
+      return value * 1000;
+    }
     return value;
   }
 
   if (typeof value === "string") {
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue)) {
+      return extractMessageTimestamp(numericValue);
+    }
+
     const parsed = Date.parse(value);
     if (!Number.isNaN(parsed)) {
       return parsed;
