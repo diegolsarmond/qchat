@@ -43,6 +43,10 @@ const handler = async (req: Request): Promise<Response> => {
     );
 
     let userId: string | null = null;
+    let metadataRoles: string[] = [];
+    let userRole: string | null = null;
+    let isAdminRole = false;
+    let isSupervisorRole = false;
 
     if (accessToken) {
       const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
@@ -55,6 +59,27 @@ const handler = async (req: Request): Promise<Response> => {
       }
 
       userId = authData.user.id;
+      const appMetadata = (authData.user as { app_metadata?: Record<string, unknown> | undefined })?.app_metadata ?? {};
+      const directRole = typeof appMetadata.role === 'string' ? appMetadata.role.toLowerCase() : null;
+      const metadataRolesValue = Array.isArray((appMetadata as { roles?: unknown }).roles)
+        ? ((appMetadata as { roles?: string[] }).roles ?? [])
+        : [];
+      metadataRoles = [
+        directRole,
+        ...metadataRolesValue
+          .filter((role): role is string => typeof role === 'string' && role.trim().length > 0)
+          .map(role => role.toLowerCase()),
+      ].filter((role): role is string => Boolean(role));
+      if (appMetadata.is_admin === true) {
+        metadataRoles.push('admin');
+      }
+      if (appMetadata.is_supervisor === true) {
+        metadataRoles.push('supervisor');
+      }
+      const allowedRoles = ['admin', 'supervisor', 'agent', 'owner'];
+      userRole = metadataRoles.find(role => allowedRoles.includes(role)) ?? null;
+      isAdminRole = metadataRoles.includes('admin') || metadataRoles.includes('owner');
+      isSupervisorRole = metadataRoles.includes('supervisor');
     }
 
     const { credentialId, limit = 50, offset = 0 } = await req.json();
@@ -77,12 +102,23 @@ const handler = async (req: Request): Promise<Response> => {
     if (credential && userId) {
       const { data: membership } = await supabaseClient
         .from('credential_members')
-        .select('user_id')
+        .select('user_id, role')
         .eq('credential_id', credentialId)
         .eq('user_id', userId)
         .maybeSingle();
 
       isMember = Boolean(membership);
+      const membershipRole = typeof membership?.role === 'string' ? membership.role : null;
+      const normalizedMembershipRole = membershipRole ? membershipRole.toLowerCase() : null;
+      if (!userRole && normalizedMembershipRole && ['admin', 'supervisor', 'agent', 'owner'].includes(normalizedMembershipRole)) {
+        userRole = normalizedMembershipRole;
+      }
+      if (normalizedMembershipRole === 'admin' || normalizedMembershipRole === 'owner') {
+        isAdminRole = true;
+      }
+      if (normalizedMembershipRole === 'supervisor') {
+        isSupervisorRole = true;
+      }
     }
 
     const ownership = ensureCredentialOwnership(credential, userId, corsHeaders, { isMember });
@@ -95,6 +131,20 @@ const handler = async (req: Request): Promise<Response> => {
     const credentialOwnerId = typeof ownedCredential.user_id === 'string' && ownedCredential.user_id.length > 0
       ? ownedCredential.user_id
       : null;
+    const isCredentialOwner = ownedCredential.user_id === userId;
+    if (isCredentialOwner) {
+      userRole = userRole ?? 'owner';
+      isAdminRole = true;
+    }
+
+    if (!userRole) {
+      return new Response(
+        JSON.stringify({ error: 'Papel não autorizado' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const canManageCredential = isCredentialOwner || isAdminRole || isSupervisorRole;
 
     console.log('[UAZ Fetch Chats] Fetching from UAZ API');
 
@@ -165,6 +215,10 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (shouldFilterByUserId && credentialOwnerId) {
       chatsQuery = chatsQuery.eq('user_id', credentialOwnerId);
+    }
+
+    if (!canManageCredential && userId) {
+      chatsQuery = chatsQuery.eq('assigned_to', userId);
     }
 
     const { data: dbChats, error: dbError, count } = await chatsQuery;

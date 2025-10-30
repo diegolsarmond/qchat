@@ -53,6 +53,10 @@ serve(async (req) => {
     );
 
     let userId: string | null = null;
+    let metadataRoles: string[] = [];
+    let userRole: string | null = null;
+    let isAdminRole = false;
+    let isSupervisorRole = false;
 
     if (accessToken) {
       const { data: authData, error: authError } = await supabaseClient.auth.getUser(accessToken);
@@ -65,6 +69,27 @@ serve(async (req) => {
       }
 
       userId = authData.user.id;
+      const appMetadata = (authData.user as { app_metadata?: Record<string, unknown> | undefined })?.app_metadata ?? {};
+      const directRole = typeof appMetadata.role === "string" ? appMetadata.role.toLowerCase() : null;
+      const metadataRolesValue = Array.isArray((appMetadata as { roles?: unknown }).roles)
+        ? ((appMetadata as { roles?: string[] }).roles ?? [])
+        : [];
+      metadataRoles = [
+        directRole,
+        ...metadataRolesValue
+          .filter((role): role is string => typeof role === "string" && role.trim().length > 0)
+          .map(role => role.toLowerCase()),
+      ].filter((role): role is string => Boolean(role));
+      if (appMetadata.is_admin === true) {
+        metadataRoles.push("admin");
+      }
+      if (appMetadata.is_supervisor === true) {
+        metadataRoles.push("supervisor");
+      }
+      const allowedRoles = ["admin", "supervisor", "agent", "owner"];
+      userRole = metadataRoles.find(role => allowedRoles.includes(role)) ?? null;
+      isAdminRole = metadataRoles.includes("admin") || metadataRoles.includes("owner");
+      isSupervisorRole = metadataRoles.includes("supervisor");
     }
 
     const {
@@ -138,10 +163,32 @@ serve(async (req) => {
     }
 
     const normalizedRole = typeof membershipRole === "string" ? membershipRole.toLowerCase() : null;
+    if (!userRole && normalizedRole && ["admin", "supervisor", "agent", "owner"].includes(normalizedRole)) {
+      userRole = normalizedRole;
+    }
     const isCredentialOwner = ownedCredential.user_id === userId;
-    const hasElevatedMembership = normalizedRole === "owner" || normalizedRole === "admin";
+    if (isCredentialOwner) {
+      userRole = userRole ?? "owner";
+      isAdminRole = true;
+    }
+    if (normalizedRole === "admin" || normalizedRole === "owner") {
+      isAdminRole = true;
+    }
+    if (normalizedRole === "supervisor") {
+      isSupervisorRole = true;
+    }
+    const hasElevatedMembership = normalizedRole === "owner" || normalizedRole === "admin" || normalizedRole === "supervisor";
 
-    if (!isCredentialOwner && !hasElevatedMembership && userId && chat.assigned_to !== userId) {
+    if (!userRole) {
+      return new Response(
+        JSON.stringify({ error: "Papel não autorizado" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const canBypassAssignment = isCredentialOwner || hasElevatedMembership || isAdminRole || isSupervisorRole;
+
+    if (!canBypassAssignment && userId && chat.assigned_to !== userId) {
       return new Response(
         JSON.stringify({ error: "Forbidden" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
