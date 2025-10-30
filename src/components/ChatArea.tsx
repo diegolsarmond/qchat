@@ -1409,20 +1409,25 @@ export const ChatArea = ({
 
             return (
               <div
-                className={`
-                  max-w-[65%] rounded-lg p-2 px-3 shadow-sm
-                  ${message.from === 'me'
-                    ? 'bg-[hsl(var(--whatsapp-message-out))]'
-                    : 'bg-[hsl(var(--whatsapp-message-in))]'
-                  }
-                `}
+                key={message.id}
+                className={`flex ${message.from === 'me' ? 'justify-end' : 'justify-start'}`}
               >
-                {renderMessageContent(message)}
-                <div className="flex items-center justify-end gap-1 mt-1">
-                  <span className="text-xs text-muted-foreground">
-                    {message.timestamp}
-                  </span>
-                  {message.from === 'me' && <MessageStatus status={message.status} />}
+                <div
+                  className={`
+                    max-w-[65%] rounded-lg p-2 px-3 shadow-sm
+                    ${message.from === 'me'
+                      ? 'bg-[hsl(var(--whatsapp-message-out))]'
+                      : 'bg-[hsl(var(--whatsapp-message-in))]'
+                    }
+                  `}
+                >
+                  {renderMessageContent(message)}
+                  <div className="flex items-center justify-end gap-1 mt-1">
+                    <span className="text-xs text-muted-foreground">
+                      {message.timestamp}
+                    </span>
+                    {message.from === 'me' && <MessageStatus status={message.status} />}
+                  </div>
                 </div>
               </div>
             );
