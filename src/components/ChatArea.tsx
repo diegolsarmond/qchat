@@ -50,6 +50,34 @@ const shouldUseBase64 = (mediaType: string) => {
   return mediaType === 'image' || mediaType === 'document' || mediaType === 'audio' || mediaType === 'video';
 };
 
+const getMessageSortValue = (message: Message): number | string => {
+  if (typeof message.messageTimestamp === 'number') {
+    return message.messageTimestamp;
+  }
+
+  if (message.timestamp) {
+    const parsed = Date.parse(message.timestamp);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+
+    return message.timestamp;
+  }
+
+  return message.id;
+};
+
+const compareMessagesByTimestamp = (first: Message, second: Message): number => {
+  const firstValue = getMessageSortValue(first);
+  const secondValue = getMessageSortValue(second);
+
+  if (typeof firstValue === 'number' && typeof secondValue === 'number') {
+    return firstValue - secondValue;
+  }
+
+  return String(firstValue).localeCompare(String(secondValue));
+};
+
 const fileToBase64 = (file: File) => {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -494,7 +522,7 @@ export const ChatArea = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const orderedMessages = useMemo(
-    () => [...messages].sort((first, second) => first.timestamp.localeCompare(second.timestamp)),
+    () => [...messages].sort(compareMessagesByTimestamp),
     [messages]
   );
   const selectedLabelIds = useMemo(() => new Set((chat?.labels ?? []).map(label => label.id)), [chat?.labels]);
