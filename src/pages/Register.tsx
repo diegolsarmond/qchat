@@ -19,16 +19,29 @@ type PerformRegisterParams = {
 };
 
 const NETWORK_ERROR_MESSAGE = "Não foi possível conectar ao servidor de autenticação";
+const PERMISSION_ERROR_MESSAGE = "Você não tem permissão para concluir o cadastro";
 
 const resolveErrorMessage = (error: unknown): string => {
   if (typeof error === "object" && error !== null) {
     const hasMessage = "message" in error;
     const message = hasMessage ? (error as { message?: unknown }).message : undefined;
+    const hasCode = "code" in error;
+    const code = hasCode ? (error as { code?: unknown }).code : undefined;
     const hasName = "name" in error;
     const name = hasName ? (error as { name?: unknown }).name : undefined;
+    const normalizedMessage =
+      typeof message === "string" ? message.toLowerCase() : undefined;
+
+    if (code === "42501" || normalizedMessage?.includes("row-level security")) {
+      return PERMISSION_ERROR_MESSAGE;
+    }
+
+    if (normalizedMessage?.includes("permission denied")) {
+      return PERMISSION_ERROR_MESSAGE;
+    }
 
     if (
-      (typeof message === "string" && message.toLowerCase().includes("failed to fetch")) ||
+      (typeof message === "string" && normalizedMessage?.includes("failed to fetch")) ||
       name === "TypeError"
     ) {
       return NETWORK_ERROR_MESSAGE;
@@ -40,7 +53,13 @@ const resolveErrorMessage = (error: unknown): string => {
   }
 
   if (typeof error === "string") {
-    return error.toLowerCase().includes("failed to fetch") ? NETWORK_ERROR_MESSAGE : error;
+    const normalizedError = error.toLowerCase();
+
+    if (normalizedError.includes("row-level security") || normalizedError.includes("permission denied")) {
+      return PERMISSION_ERROR_MESSAGE;
+    }
+
+    return normalizedError.includes("failed to fetch") ? NETWORK_ERROR_MESSAGE : error;
   }
 
   return "Erro inesperado";
@@ -57,8 +76,9 @@ export const performRegister = async ({
   setLoading(true);
 
   try {
+    const sanitizedEmail = email.trim();
     const { data, error } = await signUp({
-      email,
+      email: sanitizedEmail,
       password,
     });
 
@@ -73,7 +93,7 @@ export const performRegister = async ({
     }
 
     const userId = data?.user?.id;
-    const userEmail = data?.user?.email;
+    const userEmail = data?.user?.email?.trim();
 
     if (!userId || !userEmail) {
       toast({
