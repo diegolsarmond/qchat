@@ -1410,7 +1410,7 @@ export const ChatArea = ({
             return (
               <div
                 key={message.id}
-                className={`flex ${message.from === 'me' ? 'justify-end' : 'justify-start'}`}
+                className={`flex w-full ${message.from === 'me' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
                   className={`
