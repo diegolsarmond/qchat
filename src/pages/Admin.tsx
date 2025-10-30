@@ -542,20 +542,30 @@ const Admin = () => {
           throw error;
         }
 
-        const { error: membershipError } = await supabase
-          .from('credential_members')
-          .upsert(
-            {
-              credential_id: activeCredentialId,
-              user_id: userId,
-              role: 'agent',
-            },
-            { onConflict: 'credential_id,user_id' },
-          );
+          const { data: existingMembership, error: membershipFetchError } = await supabase
+            .from('credential_members')
+            .select('role')
+            .eq('credential_id', activeCredentialId)
+            .eq('user_id', userId)
+            .maybeSingle();
 
-        if (membershipError) {
-          throw membershipError;
-        }
+          if (membershipFetchError) {
+            throw membershipFetchError;
+          }
+
+          if (!existingMembership) {
+            const { error: membershipInsertError } = await supabase
+              .from('credential_members')
+              .insert({
+                credential_id: activeCredentialId,
+                user_id: userId,
+                role: 'agent',
+              });
+
+            if (membershipInsertError) {
+              throw membershipInsertError;
+            }
+          }
 
         if (previousAssigned && previousAssigned !== userId) {
           const { count: remainingAssignments, error: countError } = await supabase
