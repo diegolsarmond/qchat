@@ -10,6 +10,7 @@ type HandlerSetup = {
   createClientCalls: unknown[][];
   fetchCalls: Request[];
   updates: Array<Record<string, unknown>>;
+  ensureCalls: Array<Record<string, unknown>>;
 };
 
 const loadHandler = (options?: {
@@ -36,6 +37,7 @@ const loadHandler = (options?: {
 
   const createClientCalls: unknown[][] = [];
   const fetchCalls: Request[] = [];
+  const ensureCalls: Array<Record<string, unknown>> = [];
   const updates: Array<Record<string, unknown>> = [];
 
   const env = options?.env ?? {
@@ -125,6 +127,24 @@ const loadHandler = (options?: {
       return { ensureCredentialOwnership };
     }
 
+    if (specifier === '../uaz-configure-events/ensure-webhook.ts') {
+      return {
+        ensureMessagesHistoryIntegration: async (payload: Record<string, unknown>) => {
+          ensureCalls.push(payload);
+          return {
+            success: true,
+            webhookConfigured: false,
+            sseFallbackUsed: false,
+            processedMessages: 0,
+            webhookUrl: null,
+            fallbackUrl: null,
+            error: null,
+          };
+        },
+        resolveIncomingWebhookUrl: () => '',
+      };
+    }
+
     return require(specifier);
   };
 
@@ -154,7 +174,7 @@ const loadHandler = (options?: {
     throw new Error('Handler não capturado');
   }
 
-  return { handler: capturedHandler, createClientCalls, fetchCalls, updates };
+  return { handler: capturedHandler, createClientCalls, fetchCalls, updates, ensureCalls };
 };
 
 test('handler de uaz-get-qr rejeita requisição sem Authorization', async () => {
@@ -202,7 +222,7 @@ test('handler de uaz-get-qr retorna erro quando credencial não possui configura
     },
   };
 
-  const { handler } = loadHandler({
+  const { handler, ensureCalls } = loadHandler({
     supabaseClient: supabaseClient as unknown as Record<string, unknown>,
     ensureCredentialOwnership: () => ({ credential: credentialRecord, response: undefined }),
     fetchImpl: async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
@@ -305,6 +325,7 @@ test('handler de uaz-get-qr retorna dados quando UAZ responde com sucesso', asyn
   }));
 
   assert.equal(fetchCalls.length, 1);
+  assert.equal(ensureCalls.length, 1);
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.deepEqual(payload, {
