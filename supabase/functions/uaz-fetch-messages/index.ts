@@ -110,6 +110,10 @@ const handler = async (req: Request): Promise<Response> => {
       return ownership.response;
     }
     const ownedCredential = ownership.credential;
+    const credentialOwnerId =
+      typeof ownedCredential.user_id === 'string' && ownedCredential.user_id.length > 0
+        ? ownedCredential.user_id
+        : null;
 
     const { data: chat, error: chatError } = await supabaseClient
       .from('chats')
