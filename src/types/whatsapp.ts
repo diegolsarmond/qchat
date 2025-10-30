@@ -46,6 +46,7 @@ export interface Message {
   chatId: string;
   content: string;
   timestamp: string;
+  messageTimestamp?: number | null;
   from: 'me' | 'them';
   status?: 'sent' | 'delivered' | 'read';
   messageType?: 'text' | 'media' | 'interactive' | 'contact' | 'location';
