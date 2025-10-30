@@ -123,6 +123,11 @@ test("QRCodeScanner continua polling após obter um QR code até detectar conex�
   const toastCalls = [];
 
   const supabaseStub = {
+    auth: {
+      async getSession() {
+        return { data: { session: null }, error: null };
+      },
+    },
     functions: {
       async invoke() {
         invokeCalls.push("fetch");
@@ -169,17 +174,18 @@ test("QRCodeScanner continua polling após obter um QR code até detectar conex�
 
     reactStub.__render(QRCodeScanner, { credentialId: "cred", onConnected: () => {} });
 
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let i = 0; i < 6; i += 1) {
+      await Promise.resolve();
+    }
     assert.equal(reactStub.__getState()[0], "data:image/png;base64,abc");
 
     assert.equal(invokeCalls.length, 1);
     assert.ok(intervalCallback, "interval callback should be registered");
 
     await intervalCallback();
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let i = 0; i < 6; i += 1) {
+      await Promise.resolve();
+    }
 
     assert.equal(invokeCalls.length, 2);
     assert.equal(clearedIntervals.length, 0);
@@ -197,6 +203,11 @@ test("QRCodeScanner encerra polling quando a conexão é detectada", async () =>
 
   let callIndex = 0;
   const supabaseStub = {
+    auth: {
+      async getSession() {
+        return { data: { session: null }, error: null };
+      },
+    },
     functions: {
       async invoke() {
         invokeCalls.push("fetch");
@@ -257,16 +268,17 @@ test("QRCodeScanner encerra polling quando a conexão é detectada", async () =>
 
     reactStub.__render(QRCodeScanner, { credentialId: "cred", onConnected: () => onConnectedCalls.push(true) });
 
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let i = 0; i < 6; i += 1) {
+      await Promise.resolve();
+    }
 
     assert.equal(invokeCalls.length, 1);
     assert.ok(intervalCallback, "interval callback should be registered");
 
     await intervalCallback();
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let i = 0; i < 6; i += 1) {
+      await Promise.resolve();
+    }
 
     assert.equal(invokeCalls.length, 2);
     assert.deepEqual(clearedIntervals, [99]);
@@ -286,6 +298,11 @@ test("QRCodeScanner trata resposta vazia sem exibir erro", async () => {
   const toastCalls = [];
 
   const supabaseStub = {
+    auth: {
+      async getSession() {
+        return { data: { session: null }, error: null };
+      },
+    },
     functions: {
       async invoke() {
         return { data: undefined, error: null };
@@ -327,9 +344,9 @@ test("QRCodeScanner trata resposta vazia sem exibir erro", async () => {
 
     reactStub.__render(QRCodeScanner, { credentialId: "cred", onConnected: () => {} });
 
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let i = 0; i < 6; i += 1) {
+      await Promise.resolve();
+    }
 
     const state = reactStub.__getState();
     assert.equal(toastCalls.length, 0);
