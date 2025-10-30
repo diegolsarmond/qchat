@@ -19,8 +19,6 @@ import {
   X,
   Lock,
   Unlock,
-  List,
-  UserPlus,
   MapPin,
   Download,
   Tag
@@ -486,22 +484,6 @@ export const ChatArea = ({
   const [isRecording, setIsRecording] = useState(false);
   const [recordingChunks, setRecordingChunks] = useState<Blob[]>([]);
   const [isPrivate, setIsPrivate] = useState(false);
-  const [interactiveMode, setInteractiveMode] = useState<'none' | 'buttons' | 'list'>('none');
-  const [interactiveHeader, setInteractiveHeader] = useState('');
-  const [interactiveBody, setInteractiveBody] = useState('');
-  const [interactiveFooter, setInteractiveFooter] = useState('');
-  const [interactiveButtonLabel, setInteractiveButtonLabel] = useState('Selecionar');
-  const [interactiveButtons, setInteractiveButtons] = useState<{ id: string; title: string; description?: string }[]>([
-    { id: '', title: '' },
-    { id: '', title: '' },
-  ]);
-  const [interactiveSectionTitle, setInteractiveSectionTitle] = useState('');
-  const [interactiveListRows, setInteractiveListRows] = useState<{ id: string; title: string; description?: string }[]>([
-    { id: '', title: '', description: '' },
-  ]);
-  const [showContactForm, setShowContactForm] = useState(false);
-  const [contactName, setContactName] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
   const [availableLabels, setAvailableLabels] = useState<Label[]>([]);
   const [isLoadingLabels, setIsLoadingLabels] = useState(false);
   const [labelLoadingMap, setLabelLoadingMap] = useState<Record<string, boolean>>({});
@@ -842,158 +824,7 @@ export const ChatArea = ({
     }
   }, [orderedMessages, isPrependingMessages]);
 
-  const resetInteractiveState = () => {
-    setInteractiveMode('none');
-    setInteractiveHeader('');
-    setInteractiveBody('');
-    setInteractiveFooter('');
-    setInteractiveButtonLabel('Selecionar');
-    setInteractiveButtons([
-      { id: '', title: '' },
-      { id: '', title: '' },
-    ]);
-    setInteractiveSectionTitle('');
-    setInteractiveListRows([{ id: '', title: '', description: '' }]);
-  };
-
-  const handleToggleInteractive = () => {
-    if (interactiveMode === 'none') {
-      setInteractiveMode('buttons');
-      return;
-    }
-    resetInteractiveState();
-  };
-
-  const handleAddInteractiveButton = () => {
-    setInteractiveButtons((current) => {
-      if (current.length >= 3) {
-        return current;
-      }
-      return [...current, { id: '', title: '' }];
-    });
-  };
-
-  const handleUpdateInteractiveButton = (index: number, field: 'id' | 'title', value: string) => {
-    setInteractiveButtons((current) =>
-      current.map((button, idx) =>
-        idx === index
-          ? {
-              ...button,
-              [field]: value,
-            }
-          : button,
-      ),
-    );
-  };
-
-  const handleAddInteractiveListRow = () => {
-    setInteractiveListRows((current) => {
-      if (current.length >= 10) {
-        return current;
-      }
-      return [...current, { id: '', title: '', description: '' }];
-    });
-  };
-
-  const handleUpdateInteractiveListRow = (
-    index: number,
-    field: 'id' | 'title' | 'description',
-    value: string,
-  ) => {
-    setInteractiveListRows((current) =>
-      current.map((row, idx) =>
-        idx === index
-          ? {
-              ...row,
-              [field]: value,
-            }
-          : row,
-      ),
-    );
-  };
-
-  const handleSendInteractive = () => {
-    const body = interactiveBody.trim();
-    if (!body || interactiveMode === 'none') {
-      return;
-    }
-
-    if (interactiveMode === 'buttons') {
-      const buttons = interactiveButtons
-        .map((button) => ({
-          id: button.id.trim(),
-          title: button.title.trim(),
-        }))
-        .filter((button) => button.id && button.title);
-
-      if (!buttons.length) {
-        return;
-      }
-
-      const payload: SendMessagePayload = {
-        content: body,
-        messageType: 'interactive',
-        interactive: {
-          type: 'buttons',
-          body,
-          header: interactiveHeader.trim() || undefined,
-          footer: interactiveFooter.trim() || undefined,
-          buttons,
-        },
-      };
-
-      if (isPrivate) {
-        payload.isPrivate = true;
-      }
-
-      onSendMessage(payload);
-      resetInteractiveState();
-      return;
-    }
-
-    const rows = interactiveListRows
-      .map((row) => ({
-        id: row.id.trim(),
-        title: row.title.trim(),
-        description: row.description?.trim() || undefined,
-      }))
-      .filter((row) => row.id && row.title);
-
-    if (!rows.length) {
-      return;
-    }
-
-    const payload: SendMessagePayload = {
-      content: body,
-      messageType: 'interactive',
-      interactive: {
-        type: 'list',
-        body,
-        header: interactiveHeader.trim() || undefined,
-        footer: interactiveFooter.trim() || undefined,
-        button: interactiveButtonLabel.trim() || 'Selecionar',
-        sections: [
-          {
-            title: interactiveSectionTitle.trim() || undefined,
-            rows,
-          },
-        ],
-      },
-    };
-
-    if (isPrivate) {
-      payload.isPrivate = true;
-    }
-
-    onSendMessage(payload);
-    resetInteractiveState();
-  };
-
   const handleSend = () => {
-    if (interactiveMode !== 'none') {
-      return;
-    }
-
     if (messageText.trim()) {
       onSendMessage({
         content: messageText,
@@ -1002,37 +833,6 @@ export const ChatArea = ({
       });
       setMessageText("");
     }
-  };
-
-  const handleToggleContactForm = () => {
-    setShowContactForm((value) => {
-      if (value) {
-        setContactName("");
-        setContactPhone("");
-      }
-      return !value;
-    });
-  };
-
-  const handleSendContact = () => {
-    const name = contactName.trim();
-    const phone = contactPhone.trim();
-
-    if (!name || !phone) {
-      return;
-    }
-
-    onSendMessage({
-      content: name,
-      messageType: 'contact',
-      contactName: name,
-      contactPhone: phone,
-      ...(isPrivate ? { isPrivate: true } : {}),
-    });
-
-    setContactName("");
-    setContactPhone("");
-    setShowContactForm(false);
   };
 
   const handleStartRecording = () => {
@@ -1048,10 +848,6 @@ export const ChatArea = ({
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (interactiveMode !== 'none') {
-      return;
-    }
-
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -1436,146 +1232,6 @@ export const ChatArea = ({
         </div>
       </ScrollArea>
 
-      {interactiveMode !== 'none' && (
-        <div className="bg-[hsl(var(--whatsapp-header))] px-3 pt-3">
-          <div className="bg-white/90 rounded-md p-3 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={interactiveMode}
-                onChange={(event) =>
-                  setInteractiveMode(event.target.value as 'buttons' | 'list')
-                }
-                className="border border-input rounded-md px-2 py-1 text-sm"
-              >
-                <option value="buttons">Botões</option>
-                <option value="list">Lista</option>
-              </select>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={resetInteractiveState}
-              >
-                Cancelar
-              </Button>
-            </div>
-            <Input
-              value={interactiveHeader}
-              onChange={(event) => setInteractiveHeader(event.target.value)}
-              placeholder="Cabeçalho (opcional)"
-            />
-            <Textarea
-              value={interactiveBody}
-              onChange={(event) => setInteractiveBody(event.target.value)}
-              placeholder="Mensagem"
-              rows={3}
-            />
-            <Input
-              value={interactiveFooter}
-              onChange={(event) => setInteractiveFooter(event.target.value)}
-              placeholder="Rodapé (opcional)"
-            />
-            {interactiveMode === 'buttons' ? (
-              <div className="space-y-2">
-                {interactiveButtons.map((button, index) => (
-                  <div key={`interactive-button-${index}`} className="grid gap-2 sm:grid-cols-2">
-                    <Input
-                      value={button.id}
-                      onChange={(event) =>
-                        handleUpdateInteractiveButton(index, 'id', event.target.value)
-                      }
-                      placeholder="ID do botão"
-                    />
-                    <Input
-                      value={button.title}
-                      onChange={(event) =>
-                        handleUpdateInteractiveButton(index, 'title', event.target.value)
-                      }
-                      placeholder="Título do botão"
-                    />
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAddInteractiveButton}
-                  disabled={interactiveButtons.length >= 3}
-                >
-                  Adicionar botão
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Input
-                  value={interactiveButtonLabel}
-                  onChange={(event) => setInteractiveButtonLabel(event.target.value)}
-                  placeholder="Texto do botão da lista"
-                />
-                <Input
-                  value={interactiveSectionTitle}
-                  onChange={(event) => setInteractiveSectionTitle(event.target.value)}
-                  placeholder="Título da seção (opcional)"
-                />
-                {interactiveListRows.map((row, index) => (
-                  <div key={`interactive-row-${index}`} className="grid gap-2 sm:grid-cols-2">
-                    <Input
-                      value={row.id}
-                      onChange={(event) =>
-                        handleUpdateInteractiveListRow(index, 'id', event.target.value)
-                      }
-                      placeholder="ID da opção"
-                    />
-                    <Input
-                      value={row.title}
-                      onChange={(event) =>
-                        handleUpdateInteractiveListRow(index, 'title', event.target.value)
-                      }
-                      placeholder="Título da opção"
-                    />
-                    <Input
-                      value={row.description ?? ''}
-                      onChange={(event) =>
-                        handleUpdateInteractiveListRow(index, 'description', event.target.value)
-                      }
-                      placeholder="Descrição (opcional)"
-                      className="sm:col-span-2"
-                    />
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAddInteractiveListRow}
-                  disabled={interactiveListRows.length >= 10}
-                >
-                  Adicionar opção
-                </Button>
-              </div>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={resetInteractiveState}
-              >
-                Limpar
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="bg-primary hover:bg-primary/90"
-                onClick={handleSendInteractive}
-              >
-                Enviar menu
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Input Area */}
       <div className="bg-[hsl(var(--whatsapp-header))] p-3 flex items-center gap-2">
         <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-white/10">
@@ -1599,48 +1255,7 @@ export const ChatArea = ({
           <Paperclip className="w-5 h-5" />
         </Button>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`text-primary-foreground hover:bg-white/10 ${
-            interactiveMode !== 'none' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''
-          }`}
-          onClick={handleToggleInteractive}
-          aria-label={interactiveMode === 'none' ? 'Criar menu interativo' : 'Fechar menu interativo'}
-          aria-pressed={interactiveMode !== 'none'}
-        >
-          <List className="w-5 h-5" />
-        </Button>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`text-primary-foreground hover:bg-white/10 ${
-              showContactForm ? 'bg-white/20 text-primary' : ''
-            }`}
-            onClick={handleToggleContactForm}
-            aria-label={showContactForm ? 'Fechar formulário de contato' : 'Abrir formulário de contato'}
-            disabled={isRecording}
-          >
-            <UserPlus className="w-5 h-5" />
-          </Button>
-
-        {showContactForm ? (
-          <div className="flex flex-1 gap-2">
-            <Input
-              value={contactName}
-              onChange={(event) => setContactName(event.target.value)}
-              placeholder="Nome do contato"
-              className="bg-white/90"
-            />
-            <Input
-              value={contactPhone}
-              onChange={(event) => setContactPhone(event.target.value)}
-              placeholder="Telefone"
-              className="bg-white/90"
-            />
-          </div>
-        ) : isRecording ? (
+        {isRecording ? (
           <div className="flex-1 bg-white/90 rounded-md px-3 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-destructive">
               <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
@@ -1649,14 +1264,14 @@ export const ChatArea = ({
             <span className="text-xs text-muted-foreground">{recordingChunks.length} bloco(s)</span>
           </div>
         ) : (
-          <Input
+          <Textarea
             data-testid="chat-area-input"
             value={messageText}
-            onChange={(e) => setMessageText(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onChange={(event) => setMessageText(event.target.value)}
+            onKeyDown={handleKeyPress}
             placeholder="Digite uma mensagem"
-            className="flex-1 bg-white/90"
-            disabled={interactiveMode !== 'none'}
+            className="flex-1 bg-white/90 min-h-[56px]"
+            rows={2}
           />
         )}
 
@@ -1695,16 +1310,6 @@ export const ChatArea = ({
               <Send className="w-5 h-5" />
             </Button>
           </>
-        ) : showContactForm ? (
-          <Button
-            onClick={handleSendContact}
-            size="icon"
-            className="bg-primary hover:bg-primary/90"
-            aria-label="Enviar contato"
-            disabled={!contactName.trim() || !contactPhone.trim()}
-          >
-            <Send className="w-5 h-5" />
-          </Button>
         ) : messageText.trim() ? (
           <Button
             onClick={handleSend}
