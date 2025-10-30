@@ -10,7 +10,10 @@ export default defineConfig(({ mode }) => {
   const supabaseEnv = Object.fromEntries(
     Object.entries({
       VITE_SUPABASE_URL: env.VITE_SUPABASE_URL,
+      VITE_SUPABASE_ANON_KEY: env.VITE_SUPABASE_ANON_KEY,
+      VITE_SUPABASE_KEY: env.VITE_SUPABASE_KEY,
       VITE_SUPABASE_PUBLISHABLE_KEY: env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      VITE_SUPABASE_PUBLIC_KEY: env.VITE_SUPABASE_PUBLIC_KEY,
       VITE_SUPABASE_PROJECT_ID: env.VITE_SUPABASE_PROJECT_ID,
     }).filter(([, value]) => typeof value === "string")
   ) satisfies Record<string, string>;
