@@ -2,10 +2,21 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import type { Label as ChatLabel } from "@/types/whatsapp";
 
@@ -54,6 +65,10 @@ type PerformAdminUserCreationParams = {
   updateStats: (nextStats: AdminStat[]) => void;
   toast: ReturnType<typeof useToast>['toast'];
 };
+
+type AdminUser = Tables<'users'>;
+type UserRole = AdminUser['role'];
+const userRoleOptions: UserRole[] = ["admin", "supervisor", "agent"];
 
 export const performAdminUserCreation = async ({
   email,
@@ -107,6 +122,16 @@ const Admin = () => {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
   const [stats, setStats] = useState<AdminStat[]>(defaultStats);
+  const [usersList, setUsersList] = useState<AdminUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | UserRole>("all");
+  const [userActionIds, setUserActionIds] = useState<Record<string, boolean>>({});
+  const [editUser, setEditUser] = useState<AdminUser | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [savingUser, setSavingUser] = useState(false);
   const [createEmail, setCreateEmail] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [createName, setCreateName] = useState("");
@@ -133,6 +158,195 @@ const Admin = () => {
       chatsCount: chatsResponse.count ?? 0,
     };
   }, []);
+
+  const fetchUsers = useCallback(async () => {
+    setUsersLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, name, email, role, is_active, created_at, updated_at')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      setUsersList(data ?? []);
+    } catch (error) {
+      console.error('Erro ao carregar usuários', error);
+      toast({
+        title: "Erro ao carregar usuários",
+        description: "Não foi possível obter a lista de usuários",
+        variant: "destructive",
+      });
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [toast]);
+
+  const filteredUsers = useMemo(() => {
+    return usersList.filter((user) => {
+      const statusMatch =
+        statusFilter === "all"
+          ? true
+          : statusFilter === "active"
+            ? user.is_active
+            : !user.is_active;
+      const roleMatch = roleFilter === "all" ? true : user.role === roleFilter;
+      return statusMatch && roleMatch;
+    });
+  }, [usersList, statusFilter, roleFilter]);
+
+  const handleOpenEditUser = useCallback((user: AdminUser) => {
+    setEditUser(user);
+    setEditName(user.name);
+    setEditEmail(user.email);
+    setEditDialogOpen(true);
+  }, []);
+
+  const handleCloseEditUser = useCallback(() => {
+    setEditDialogOpen(false);
+    setEditUser(null);
+    setEditName("");
+    setEditEmail("");
+  }, []);
+
+  const handleSaveUser = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!editUser) {
+      return;
+    }
+
+    const nextName = editName.trim();
+    const nextEmail = editEmail.trim();
+
+    if (!nextName || !nextEmail) {
+      toast({
+        title: "Preencha os campos",
+        description: "Informe nome e e-mail válidos",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSavingUser(true);
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ name: nextName, email: nextEmail })
+        .eq('id', editUser.id);
+
+      if (error) {
+        throw error;
+      }
+
+      setUsersList((prev) =>
+        prev.map((user) => (user.id === editUser.id ? { ...user, name: nextName, email: nextEmail } : user)),
+      );
+      toast({
+        title: "Usuário atualizado",
+        description: "Informações salvas com sucesso",
+      });
+      handleCloseEditUser();
+    } catch (error) {
+      console.error('Erro ao atualizar usuário', error);
+      toast({
+        title: "Erro ao atualizar usuário",
+        description: "Não foi possível salvar as alterações",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingUser(false);
+    }
+  }, [editEmail, editName, editUser, handleCloseEditUser, toast]);
+
+  const handleToggleUserActive = useCallback(
+    async (user: AdminUser) => {
+      const nextActive = !user.is_active;
+      setUserActionIds((prev) => ({ ...prev, [user.id]: true }));
+
+      try {
+        const { error } = await supabase
+          .from('users')
+          .update({ is_active: nextActive })
+          .eq('id', user.id);
+
+        if (error) {
+          throw error;
+        }
+
+        setUsersList((prev) =>
+          prev.map((current) => (current.id === user.id ? { ...current, is_active: nextActive } : current)),
+        );
+
+        toast({
+          title: nextActive ? "Usuário ativado" : "Usuário desativado",
+          description: "Alteração aplicada com sucesso",
+        });
+      } catch (error) {
+        console.error('Erro ao atualizar status do usuário', error);
+        toast({
+          title: "Erro ao atualizar status",
+          description: "Não foi possível aplicar a alteração",
+          variant: "destructive",
+        });
+      } finally {
+        setUserActionIds((prev) => {
+          const next = { ...prev };
+          delete next[user.id];
+          return next;
+        });
+      }
+    },
+    [toast],
+  );
+
+  const handleRoleUpdate = useCallback(
+    async (user: AdminUser, nextRole: UserRole) => {
+      if (user.role === nextRole) {
+        return;
+      }
+
+      setUserActionIds((prev) => ({ ...prev, [user.id]: true }));
+
+      try {
+        const { error } = await supabase
+          .from('users')
+          .update({ role: nextRole })
+          .eq('id', user.id);
+
+        if (error) {
+          throw error;
+        }
+
+        setUsersList((prev) =>
+          prev.map((current) => (current.id === user.id ? { ...current, role: nextRole } : current)),
+        );
+
+        toast({
+          title: "Papel atualizado",
+          description: "Permissões ajustadas com sucesso",
+        });
+      } catch (error) {
+        console.error('Erro ao atualizar papel do usuário', error);
+        toast({
+          title: "Erro ao atualizar papel",
+          description: "Não foi possível aplicar o novo papel",
+          variant: "destructive",
+        });
+      } finally {
+        setUserActionIds((prev) => {
+          const next = { ...prev };
+          delete next[user.id];
+          return next;
+        });
+      }
+    },
+    [toast],
+  );
 
   const listLabelsForCredential = useCallback(async (credentialId: string) => {
     const { data, error } = await supabase
@@ -199,6 +413,12 @@ const Admin = () => {
 
         setStats(formatStats(usersCount, chatsCount));
 
+        await fetchUsers();
+
+        if (!active) {
+          return;
+        }
+
         const { data: credentialData, error: credentialError } = await supabase
           .from('credentials')
           .select('id')
@@ -256,7 +476,7 @@ const Admin = () => {
     return () => {
       active = false;
     };
-  }, [fetchCounts, listLabelsForCredential, navigate, toast]);
+  }, [fetchCounts, fetchUsers, listLabelsForCredential, navigate, toast]);
 
   const handleCreateUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -516,6 +736,148 @@ const Admin = () => {
           </div>
           <Card className="border-[hsl(var(--whatsapp-border))] bg-card/80">
             <CardHeader className="pb-2">
+              <CardDescription>Visualizar e manter usuários</CardDescription>
+              <CardTitle className="text-2xl text-primary">Usuários cadastrados</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-filter-status">Status</Label>
+                    <Select
+                      value={statusFilter}
+                      onValueChange={(value) =>
+                        setStatusFilter(value as "all" | "active" | "inactive")
+                      }
+                    >
+                      <SelectTrigger id="admin-filter-status" className="w-[160px]">
+                        <SelectValue placeholder="Filtrar status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos</SelectItem>
+                        <SelectItem value="active">Ativos</SelectItem>
+                        <SelectItem value="inactive">Inativos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-filter-role">Papel</Label>
+                    <Select
+                      value={roleFilter}
+                      onValueChange={(value) => setRoleFilter(value as "all" | UserRole)}
+                    >
+                      <SelectTrigger id="admin-filter-role" className="w-[180px]">
+                        <SelectValue placeholder="Filtrar papel" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos</SelectItem>
+                        <SelectItem value="admin">Administrador</SelectItem>
+                        <SelectItem value="supervisor">Supervisor</SelectItem>
+                        <SelectItem value="agent">Agente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <Button variant="outline" onClick={fetchUsers} disabled={usersLoading}>
+                  {usersLoading ? "Atualizando..." : "Recarregar"}
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>E-mail</TableHead>
+                      <TableHead>Papel</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {usersLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-6">
+                          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Carregando usuários...
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredUsers.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                          Nenhum usuário encontrado.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredUsers.map((user) => {
+                        const busy = Boolean(userActionIds[user.id]);
+
+                        return (
+                          <TableRow key={user.id}>
+                            <TableCell className="font-medium">{user.name}</TableCell>
+                            <TableCell>{user.email}</TableCell>
+                            <TableCell>
+                              <Select
+                                value={user.role}
+                                onValueChange={(value) =>
+                                  handleRoleUpdate(user, value as UserRole)
+                                }
+                                disabled={busy || usersLoading}
+                              >
+                                <SelectTrigger className="w-[180px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {userRoleOptions.map((role) => (
+                                    <SelectItem key={role} value={role}>
+                                      {role === "admin"
+                                        ? "Administrador"
+                                        : role === "supervisor"
+                                          ? "Supervisor"
+                                          : "Agente"}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Switch
+                                  checked={user.is_active}
+                                  onCheckedChange={(checked) => {
+                                    if (checked !== user.is_active) {
+                                      handleToggleUserActive(user);
+                                    }
+                                  }}
+                                  disabled={busy || usersLoading}
+                                />
+                                <span className="text-sm text-muted-foreground">
+                                  {user.is_active ? "Ativo" : "Inativo"}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenEditUser(user)}
+                                disabled={busy || usersLoading}
+                              >
+                                Editar
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-[hsl(var(--whatsapp-border))] bg-card/80">
+            <CardHeader className="pb-2">
               <CardDescription>Gerenciar acessos</CardDescription>
               <CardTitle className="text-2xl text-primary">Criar novo usuário</CardTitle>
             </CardHeader>
@@ -696,22 +1058,76 @@ const Admin = () => {
               </Card>
             ))}
           </div>
+          <Dialog
+            open={editDialogOpen}
+            onOpenChange={(open) => {
+              if (!open) {
+                handleCloseEditUser();
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Editar usuário</DialogTitle>
+                <DialogDescription>Atualize os dados de contato do colaborador.</DialogDescription>
+              </DialogHeader>
+              <form className="space-y-4" onSubmit={handleSaveUser}>
+                <div className="space-y-2">
+                  <Label htmlFor="admin-edit-name">Nome</Label>
+                  <Input
+                    id="admin-edit-name"
+                    value={editName}
+                    onChange={(event) => setEditName(event.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="admin-edit-email">E-mail</Label>
+                  <Input
+                    id="admin-edit-email"
+                    type="email"
+                    value={editEmail}
+                    onChange={(event) => setEditEmail(event.target.value)}
+                    required
+                  />
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={handleCloseEditUser}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={savingUser}>
+                    {savingUser ? "Salvando..." : "Salvar alterações"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     );
   }, [
     activeCredentialId,
     authorized,
+    editDialogOpen,
+    editEmail,
+    editName,
+    fetchUsers,
+    filteredUsers,
     createEmail,
     createPassword,
     createName,
     creatingLabel,
     creatingUser,
     deletingLabelId,
+    handleCloseEditUser,
     handleCreateLabel,
     handleCreateUser,
     handleDeleteLabel,
+    handleOpenEditUser,
+    handleRoleUpdate,
     handleReloadLabels,
+    handleSaveUser,
+    handleToggleUserActive,
     handleUpdateLabel,
     labelEdits,
     labels,
@@ -719,7 +1135,12 @@ const Admin = () => {
     loading,
     newLabelColor,
     newLabelName,
+    roleFilter,
+    savingUser,
     stats,
+    statusFilter,
+    userActionIds,
+    usersLoading,
     updatingLabelIds,
   ]);
 
