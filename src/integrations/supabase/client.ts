@@ -59,6 +59,10 @@ const shouldAppendProjectPath = (url: URL) => {
     return false;
   }
 
+  if (!url.port || url.port === '80' || url.port === '443') {
+    return false;
+  }
+
   const pathname = url.pathname;
   return !/\/project\//.test(pathname) && !/\/projects\//.test(pathname);
 };
