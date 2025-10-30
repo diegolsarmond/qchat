@@ -8,6 +8,9 @@ declare const __SUPABASE_ENV__:
   | (EnvSource & {
       VITE_SUPABASE_URL?: string;
       VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+      VITE_SUPABASE_ANON_KEY?: string;
+      VITE_SUPABASE_KEY?: string;
+      VITE_SUPABASE_PUBLIC_KEY?: string;
     })
   | undefined;
 
@@ -77,8 +80,16 @@ const buildSupabaseUrl = (baseUrl: string, projectId?: string) => {
 };
 
 const SUPABASE_URL = buildSupabaseUrl(SUPABASE_BASE_URL, SUPABASE_PROJECT_ID);
+const SUPABASE_KEY_SOURCES = [
+  envSource.VITE_SUPABASE_PUBLISHABLE_KEY,
+  envSource.VITE_SUPABASE_ANON_KEY,
+  envSource.VITE_SUPABASE_KEY,
+  envSource.VITE_SUPABASE_PUBLIC_KEY,
+];
+
 const SUPABASE_PUBLISHABLE_KEY =
-  normalizeEnvValue(envSource.VITE_SUPABASE_PUBLISHABLE_KEY) ?? DEFAULT_SUPABASE_PUBLISHABLE_KEY;
+  SUPABASE_KEY_SOURCES.map(normalizeEnvValue).find((value): value is string => typeof value === 'string') ??
+  DEFAULT_SUPABASE_PUBLISHABLE_KEY;
 
 const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
