@@ -66,6 +66,7 @@ const Index = () => {
   });
   const { toast } = useToast();
   const connectionCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const selectedChatIdRef = useRef<string | null>(null);
 
   const clearConnectionInterval = useCallback(() => {
     if (connectionCheckIntervalRef.current) {
@@ -247,6 +248,10 @@ const Index = () => {
     };
   }, [fetchUsers]);
 
+  useEffect(() => {
+    selectedChatIdRef.current = selectedChat?.id ?? null;
+  }, [selectedChat?.id]);
+
   // Fetch chats when connected and setup realtime
   useEffect(() => {
     if (isConnected && credentialId) {
@@ -316,7 +321,7 @@ const Index = () => {
           }
         ));
 
-        if (selectedChat && payload.new.chat_id === selectedChat.id) {
+        if (selectedChatIdRef.current && payload.new.chat_id === selectedChatIdRef.current) {
           let appended = false;
           setMessages(prev => {
             const index = prev.findIndex(message => message.id === mappedMessage.id);
@@ -383,7 +388,7 @@ const Index = () => {
         supabase.removeChannel(chatLabelsChannel);
       };
     }
-  }, [isConnected, credentialId, selectedChat]);
+  }, [isConnected, credentialId]);
 
   const deriveAttendanceStatus = (chat: any): Chat["attendanceStatus"] => {
     const raw =
