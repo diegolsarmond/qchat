@@ -23,6 +23,7 @@ import {
 } from "@/lib/message-pagination";
 
 const MESSAGE_PAGE_SIZE = 50;
+const ALLOWED_ROLES = ["admin", "supervisor", "agent", "owner"];
 
 const formatTimestamp = (value: number | string | null | undefined) =>
   new Date(value ?? Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -61,6 +62,8 @@ const Index = () => {
   const [isPrependingMessages, setIsPrependingMessages] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [credentialRole, setCredentialRole] = useState<string | null>(null);
   const [credentialProfile, setCredentialProfile] = useState({
     profileName: null as string | null,
     phoneNumber: null as string | null,
@@ -163,6 +166,7 @@ const Index = () => {
         return;
       }
       const session = sessionResult.data.session;
+      setSessionUserId(session?.user?.id ?? null);
       const appMetadata = (session?.user as { app_metadata?: Record<string, unknown> | undefined })?.app_metadata ?? {};
       const directRole = typeof appMetadata.role === "string" ? appMetadata.role.toLowerCase() : null;
       const metadataRoles = Array.isArray((appMetadata as { roles?: unknown }).roles)
@@ -180,8 +184,12 @@ const Index = () => {
       if (appMetadata.is_supervisor === true) {
         normalizedRoles.push("supervisor");
       }
-      const allowedRoles = ["admin", "supervisor", "agent", "owner"];
-      const resolvedRole = normalizedRoles.find(role => Boolean(role) && allowedRoles.includes(role as string)) ?? null;
+      const cleanedRoles = normalizedRoles.filter((role): role is string => Boolean(role) && ALLOWED_ROLES.includes(role));
+      const resolvedRole =
+        cleanedRoles.find(role => role === "admin") ??
+        cleanedRoles.find(role => role === "supervisor") ??
+        cleanedRoles[0] ??
+        null;
       setUserRole(resolvedRole);
     };
 
@@ -193,7 +201,61 @@ const Index = () => {
   }, []);
 
   const normalizedUserRole = useMemo(() => (typeof userRole === "string" ? userRole.toLowerCase() : null), [userRole]);
-  const canManageAttendance = normalizedUserRole === "admin" || normalizedUserRole === "supervisor";
+  const normalizedCredentialRole = useMemo(
+    () => (typeof credentialRole === "string" ? credentialRole.toLowerCase() : null),
+    [credentialRole]
+  );
+  const canManageAttendance = useMemo(() => {
+    const rolesToCheck = [normalizedUserRole, normalizedCredentialRole];
+    return rolesToCheck.some(role => role === "admin" || role === "supervisor");
+  }, [normalizedCredentialRole, normalizedUserRole]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadCredentialRole = async () => {
+      if (!credentialId || !sessionUserId) {
+        if (active) {
+          setCredentialRole(null);
+        }
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('credential_members')
+        .select('role')
+        .eq('credential_id', credentialId)
+        .eq('user_id', sessionUserId);
+
+      if (!active) {
+        return;
+      }
+
+      if (error) {
+        console.error('Error fetching credential role:', error);
+        setCredentialRole(null);
+        return;
+      }
+
+      const membershipRoles = (data ?? [])
+        .map(entry => (typeof entry.role === "string" ? entry.role.toLowerCase() : null))
+        .filter((role): role is string => Boolean(role) && ALLOWED_ROLES.includes(role));
+
+      const resolvedMembershipRole =
+        membershipRoles.find(role => role === "admin") ??
+        membershipRoles.find(role => role === "supervisor") ??
+        membershipRoles[0] ??
+        null;
+
+      setCredentialRole(resolvedMembershipRole);
+    };
+
+    loadCredentialRole();
+
+    return () => {
+      active = false;
+    };
+  }, [credentialId, sessionUserId]);
 
   useEffect(() => {
     let active = true;
