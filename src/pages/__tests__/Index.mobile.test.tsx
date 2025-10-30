@@ -76,6 +76,7 @@ const createChatArea = (showSidebar: boolean) => (
     isPrependingMessages={false}
     showSidebar={showSidebar}
     onShowSidebar={() => {}}
+    userRole="admin"
   />
 );
 

@@ -464,6 +464,7 @@ interface ChatAreaProps {
   credentialId?: string | null;
   onAssignLabel?: (chatId: string, label: Label) => Promise<void> | void;
   onRemoveLabel?: (chatId: string, label: Label) => Promise<void> | void;
+  userRole?: string | null;
 }
 
 export const ChatArea = ({
@@ -481,6 +482,7 @@ export const ChatArea = ({
   credentialId,
   onAssignLabel,
   onRemoveLabel,
+  userRole,
 }: ChatAreaProps) => {
   const [messageText, setMessageText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -512,6 +514,9 @@ export const ChatArea = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const orderedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  const normalizedUserRole = typeof userRole === "string" ? userRole.toLowerCase() : null;
+  const canManageAttendance = normalizedUserRole === "admin" || normalizedUserRole === "supervisor" || normalizedUserRole === "owner";
+  const attendanceRestrictionLabel = "Disponível apenas para administradores e supervisores";
   const selectedLabelIds = useMemo(() => new Set((chat?.labels ?? []).map(label => label.id)), [chat?.labels]);
   const audioSourceCacheRef = useRef<Map<string, CachedAudioSource>>(new Map());
   const fetchAvailableLabels = useCallback(async () => {
@@ -1364,13 +1369,25 @@ export const ChatArea = ({
             </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
               {chat.attendanceStatus !== "finished" && (
-                <DropdownMenuItem onClick={() => onFinishAttendance(chat.id)}>
-                  Finalizar atendimento
+                canManageAttendance ? (
+                  <DropdownMenuItem onClick={() => onFinishAttendance(chat.id)}>
+                    Finalizar atendimento
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem disabled className="text-muted-foreground">
+                    Finalizar atendimento indisponível ({attendanceRestrictionLabel})
+                  </DropdownMenuItem>
+                )
+              )}
+              {canManageAttendance ? (
+                <DropdownMenuItem onClick={() => onAssignChat(chat.id)}>
+                  Atribuir conversa
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem disabled className="text-muted-foreground">
+                  Atribuir conversa indisponível ({attendanceRestrictionLabel})
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onClick={() => onAssignChat(chat.id)}>
-                Atribuir conversa
-              </DropdownMenuItem>
               <DropdownMenuItem>Info do contato</DropdownMenuItem>
               <DropdownMenuItem>Selecionar mensagens</DropdownMenuItem>
               <DropdownMenuItem>Silenciar notificações</DropdownMenuItem>

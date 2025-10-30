@@ -60,6 +60,7 @@ const Index = () => {
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const [isPrependingMessages, setIsPrependingMessages] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [credentialProfile, setCredentialProfile] = useState({
     profileName: null as string | null,
     phoneNumber: null as string | null,
@@ -152,6 +153,47 @@ const Index = () => {
       })));
     }
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSessionRole = async () => {
+      const sessionResult = await supabase.auth.getSession();
+      if (!active) {
+        return;
+      }
+      const session = sessionResult.data.session;
+      const appMetadata = (session?.user as { app_metadata?: Record<string, unknown> | undefined })?.app_metadata ?? {};
+      const directRole = typeof appMetadata.role === "string" ? appMetadata.role.toLowerCase() : null;
+      const metadataRoles = Array.isArray((appMetadata as { roles?: unknown }).roles)
+        ? ((appMetadata as { roles?: string[] }).roles ?? [])
+        : [];
+      const normalizedRoles = [
+        directRole,
+        ...metadataRoles
+          .filter((role): role is string => typeof role === "string" && role.trim().length > 0)
+          .map(role => role.toLowerCase()),
+      ];
+      if (appMetadata.is_admin === true) {
+        normalizedRoles.push("admin");
+      }
+      if (appMetadata.is_supervisor === true) {
+        normalizedRoles.push("supervisor");
+      }
+      const allowedRoles = ["admin", "supervisor", "agent", "owner"];
+      const resolvedRole = normalizedRoles.find(role => Boolean(role) && allowedRoles.includes(role as string)) ?? null;
+      setUserRole(resolvedRole);
+    };
+
+    loadSessionRole();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const normalizedUserRole = useMemo(() => (typeof userRole === "string" ? userRole.toLowerCase() : null), [userRole]);
+  const canManageAttendance = normalizedUserRole === "admin" || normalizedUserRole === "supervisor";
 
   useEffect(() => {
     let active = true;
@@ -864,6 +906,14 @@ const Index = () => {
   };
 
   const handleAssignChat = (chatId: string) => {
+    if (!canManageAttendance) {
+      toast({
+        title: "Permissão insuficiente",
+        description: "Apenas administradores e supervisores podem atribuir conversas.",
+        variant: "destructive",
+      });
+      return;
+    }
     setChatToAssign(chatId);
     setAssignDialogOpen(true);
   };
@@ -939,6 +989,14 @@ const Index = () => {
   };
 
   const handleFinishAttendance = async (chatId: string) => {
+    if (!canManageAttendance) {
+      toast({
+        title: "Permissão insuficiente",
+        description: "Apenas administradores e supervisores podem finalizar atendimentos.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       const { error } = await supabase
         .from('chats')
@@ -1149,6 +1207,7 @@ const Index = () => {
           credentialId={credentialId}
           onAssignLabel={handleAssignLabelToChat}
           onRemoveLabel={handleRemoveLabelFromChat}
+          userRole={normalizedUserRole}
         />
       </div>
 
