@@ -558,20 +558,23 @@ const Admin = () => {
           throw error;
         }
 
-        const { error: membershipError } = await supabase
-          .from('credential_members')
-          .upsert(
-            {
-              credential_id: activeCredentialId,
-              user_id: userId,
-              role: 'agent',
-            },
-            { onConflict: 'credential_id,user_id' },
-          );
+          const { error: membershipUpsertError } = await supabase
+            .from('credential_members')
+            .upsert(
+              {
+                credential_id: activeCredentialId,
+                user_id: userId,
+                role: 'agent',
+              },
+              {
+                onConflict: 'credential_id,user_id',
+                ignoreDuplicates: true,
+              },
+            );
 
-        if (membershipError) {
-          throw membershipError;
-        }
+          if (membershipUpsertError) {
+            throw membershipUpsertError;
+          }
 
         if (previousAssigned && previousAssigned !== userId) {
           const { count: remainingAssignments, error: countError } = await supabase
