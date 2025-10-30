@@ -28,11 +28,35 @@ const ALLOWED_ROLES = ["admin", "supervisor", "agent", "owner"];
 const formatTimestamp = (value: number | string | null | undefined) =>
   new Date(value ?? Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
+const extractMessageTimestamp = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value < 1_000_000_000_000) {
+      return value * 1000;
+    }
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue)) {
+      return extractMessageTimestamp(numericValue);
+    }
+
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
 export const mapApiMessage = (m: any): Message => ({
   id: m.wa_message_id ?? m.id,
   chatId: m.chat_id,
   content: m.content || "",
   timestamp: formatTimestamp(m.message_timestamp),
+  messageTimestamp: extractMessageTimestamp(m.message_timestamp),
   from: m.from_me ? "me" : "them",
   status: m.status,
   messageType: m.message_type,
@@ -386,8 +410,7 @@ const Index = () => {
         const previewContent = mappedMessage.messageType === 'text'
           ? mappedMessage.content
           : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
-        const rawTimestamp = payload.new?.message_timestamp ?? null;
-        const messageTimestampMs = rawTimestamp ? new Date(rawTimestamp).getTime() : null;
+        const messageTimestampMs = mappedMessage.messageTimestamp ?? null;
 
         setChats(prevChats => prevChats.map(chat =>
           {
@@ -927,6 +950,7 @@ const Index = () => {
         chatId: selectedChat.id,
         content: messageContent,
         timestamp,
+        messageTimestamp: now,
         from: 'me',
         status: 'sent',
         messageType: payload.messageType,

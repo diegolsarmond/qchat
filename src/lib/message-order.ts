@@ -1,6 +1,10 @@
 import type { Message } from "@/types/whatsapp";
 
 const getOrderValue = (message: Message): number | string => {
+  if (typeof message.messageTimestamp === "number") {
+    return message.messageTimestamp;
+  }
+
   if (message.timestamp) {
     const parsed = Date.parse(message.timestamp);
     if (!Number.isNaN(parsed)) {
