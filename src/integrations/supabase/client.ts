@@ -56,7 +56,8 @@ const normalizeBooleanEnvValue = (value: string | undefined) => {
 };
 
 const SUPABASE_PROJECT_ID = normalizeEnvValue(envSource.VITE_SUPABASE_PROJECT_ID) ?? DEFAULT_SUPABASE_PROJECT_ID;
-const SUPABASE_BASE_URL = normalizeEnvValue(envSource.VITE_SUPABASE_URL) ?? DEFAULT_SUPABASE_URL;
+const SUPABASE_BASE_URL_ENV = normalizeEnvValue(envSource.VITE_SUPABASE_URL);
+const SUPABASE_BASE_URL = SUPABASE_BASE_URL_ENV ?? DEFAULT_SUPABASE_URL;
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
 const SUPABASE_MANAGED_CUSTOM_DOMAIN = normalizeBooleanEnvValue(
   envSource.VITE_SUPABASE_MANAGED_CUSTOM_DOMAIN,
@@ -106,9 +107,18 @@ const SUPABASE_KEY_SOURCES = [
   envSource.VITE_SUPABASE_PUBLIC_KEY,
 ];
 
-const SUPABASE_PUBLISHABLE_KEY =
-  SUPABASE_KEY_SOURCES.map(normalizeEnvValue).find((value): value is string => typeof value === 'string') ??
-  DEFAULT_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_NORMALIZED_KEYS = SUPABASE_KEY_SOURCES.map(normalizeEnvValue);
+const SUPABASE_RESOLVED_KEY = SUPABASE_NORMALIZED_KEYS.find((value): value is string => typeof value === 'string');
+
+const SUPABASE_CONFIGURATION_ERROR_MESSAGE =
+  'Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no arquivo .env.';
+
+const SUPABASE_INITIALIZATION_ERROR =
+  !SUPABASE_BASE_URL_ENV || !SUPABASE_RESOLVED_KEY
+    ? new Error(SUPABASE_CONFIGURATION_ERROR_MESSAGE)
+    : undefined;
+
+const SUPABASE_PUBLISHABLE_KEY = SUPABASE_RESOLVED_KEY ?? DEFAULT_SUPABASE_PUBLISHABLE_KEY;
 
 const authStorage = typeof window !== 'undefined' && window?.localStorage ? window.localStorage : undefined;
 
@@ -116,7 +126,7 @@ type SupabaseClientInstance = ReturnType<typeof createClient<Database>>;
 
 const globalSupabase = globalThis as typeof globalThis & { __supabaseClient__?: SupabaseClientInstance };
 
-if (!globalSupabase.__supabaseClient__) {
+if (!globalSupabase.__supabaseClient__ && !SUPABASE_INITIALIZATION_ERROR) {
   globalSupabase.__supabaseClient__ = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: {
       storage: authStorage,
@@ -133,13 +143,27 @@ if (!globalSupabase.__supabaseClient__) {
 
 const supabaseInstance = globalSupabase.__supabaseClient__;
 
-const supabaseFunctions = supabaseInstance.functions;
+const createErrorProxy = <T extends object>(error: Error) =>
+  new Proxy(
+    {},
+    {
+      get() {
+        throw error;
+      },
+    },
+  ) as T;
+
+const supabase = SUPABASE_INITIALIZATION_ERROR
+  ? createErrorProxy<SupabaseClientInstance>(SUPABASE_INITIALIZATION_ERROR)
+  : (supabaseInstance as SupabaseClientInstance);
+
+const supabaseFunctions = SUPABASE_INITIALIZATION_ERROR ? undefined : supabase.functions;
 
 if (supabaseFunctions?.invoke) {
   const originalInvoke = supabaseFunctions.invoke.bind(supabaseFunctions);
 
   supabaseFunctions.invoke = (async (functionName, options) => {
-    const { data } = await supabaseInstance.auth.getSession();
+    const { data } = await supabase.auth.getSession();
     const accessToken = data?.session?.access_token;
 
     const headers = accessToken
@@ -153,4 +177,5 @@ if (supabaseFunctions?.invoke) {
   }) as typeof supabaseFunctions.invoke;
 }
 
-export const supabase = supabaseInstance;
+export { supabase };
+export const supabaseInitializationError = SUPABASE_INITIALIZATION_ERROR;
