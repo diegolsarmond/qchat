@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, supabaseInitializationError } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,15 @@ export const performLogin = async ({
   navigate,
   setLoading,
 }: PerformLoginParams) => {
+  if (supabaseInitializationError) {
+    toast({
+      title: "Erro de configuração",
+      description: supabaseInitializationError.message,
+      variant: "destructive",
+    });
+    return false;
+  }
+
   setLoading(true);
 
   try {
@@ -52,7 +61,13 @@ export const performLogin = async ({
     return true;
   } catch (exception) {
     const description =
-      exception instanceof Error ? exception.message : "Erro inesperado";
+      exception instanceof Error
+        ? exception.message
+        : typeof exception === "object" && exception !== null && "message" in exception
+          ? String((exception as { message?: unknown }).message ?? "Erro inesperado")
+          : typeof exception === "string"
+            ? exception
+            : "Erro inesperado";
 
     toast({
       title: "Erro ao entrar",

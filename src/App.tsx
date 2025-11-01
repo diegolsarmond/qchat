@@ -9,7 +9,7 @@ import NotFound from "./pages/NotFound";
 import Admin from "./pages/Admin";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, supabaseInitializationError } from "@/integrations/supabase/client";
 
 type ProtectedRouteProps = {
   element: ReactElement;
@@ -20,6 +20,12 @@ const ProtectedRoute = ({ element }: ProtectedRouteProps) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
+    if (supabaseInitializationError) {
+      setIsAuthenticated(false);
+      setIsLoading(false);
+      return;
+    }
+
     let active = true;
 
     const loadSession = async () => {
@@ -41,7 +47,7 @@ const ProtectedRoute = ({ element }: ProtectedRouteProps) => {
       active = false;
       listener?.subscription.unsubscribe();
     };
-  }, []);
+  }, [supabaseInitializationError]);
 
   if (isLoading) {
     return null;
