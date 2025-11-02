@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, supabaseInitializationError } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -73,6 +73,15 @@ export const performRegister = async ({
   navigate,
   setLoading,
 }: PerformRegisterParams) => {
+  if (supabaseInitializationError) {
+    toast({
+      title: "Erro de configuração",
+      description: supabaseInitializationError.message,
+      variant: "destructive",
+    });
+    return false;
+  }
+
   setLoading(true);
 
   try {
@@ -157,7 +166,7 @@ const Register = () => {
     await performRegister({
       email,
       password,
-      signUp: supabase.auth.signUp.bind(supabase.auth),
+      signUp: (credentials) => supabase.auth.signUp(credentials),
       toast,
       navigate,
       setLoading,
