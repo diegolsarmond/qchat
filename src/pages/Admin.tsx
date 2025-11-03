@@ -232,7 +232,7 @@ const Admin = () => {
         throw error;
       }
 
-      setUsersList(data ?? []);
+      setUsersList((data ?? []).map(user => ({ ...user, avatar: '' })));
     } catch (error) {
       console.error('Erro ao carregar usuários', error);
       toast({

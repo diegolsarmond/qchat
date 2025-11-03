@@ -14,7 +14,6 @@ import {
   Message,
   User as WhatsAppUser,
   SendMessagePayload,
-  Label,
 } from "@/types/whatsapp";
 import { mergeFetchedMessages } from "@/lib/message-order";
 import {
@@ -1034,14 +1033,14 @@ const Index = () => {
           .from('chats')
           .select('id', { count: 'exact', head: true })
           .eq('credential_id', credentialId)
-          .eq('assigned_to', previousAssigned);
+          .eq('assigned_to', Array.isArray(previousAssigned) ? previousAssigned[0] : previousAssigned);
 
         if ((remainingAssignments ?? 0) === 0) {
           await supabase
             .from('credential_members')
             .delete()
             .eq('credential_id', credentialId)
-            .eq('user_id', previousAssigned)
+            .eq('user_id', Array.isArray(previousAssigned) ? previousAssigned[0] : previousAssigned)
             .eq('role', 'agent');
         }
       }
