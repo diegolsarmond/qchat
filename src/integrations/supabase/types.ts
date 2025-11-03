@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      chat_labels: {
+        Row: {
+          chat_id: string
+          created_at: string
+          id: string
+          label_id: string
+        }
+        Insert: {
+          chat_id: string
+          created_at?: string
+          id?: string
+          label_id: string
+        }
+        Update: {
+          chat_id?: string
+          created_at?: string
+          id?: string
+          label_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_labels_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_labels_label_id_fkey"
+            columns: ["label_id"]
+            isOneToOne: false
+            referencedRelation: "labels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chats: {
         Row: {
           assigned_to: string | null
@@ -74,6 +110,41 @@ export type Database = {
           },
         ]
       }
+      credential_members: {
+        Row: {
+          created_at: string
+          credential_id: string
+          id: string
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credential_id: string
+          id?: string
+          role: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credential_id?: string
+          id?: string
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credential_members_credential_id_fkey"
+            columns: ["credential_id"]
+            isOneToOne: false
+            referencedRelation: "credentials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credentials: {
         Row: {
           admin_token: string | null
@@ -118,6 +189,41 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      labels: {
+        Row: {
+          color: string
+          created_at: string
+          credential_id: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          credential_id: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          credential_id?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "labels_credential_id_fkey"
+            columns: ["credential_id"]
+            isOneToOne: false
+            referencedRelation: "credentials"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       messages: {
         Row: {
