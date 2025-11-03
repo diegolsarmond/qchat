@@ -17,7 +17,6 @@ export type Database = {
       chats: {
         Row: {
           assigned_to: string | null
-          attendance_status: string
           avatar: string | null
           created_at: string
           credential_id: string
@@ -32,7 +31,6 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
-          attendance_status?: string
           avatar?: string | null
           created_at?: string
           credential_id: string
@@ -47,7 +45,6 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
-          attendance_status?: string
           avatar?: string | null
           created_at?: string
           credential_id?: string
@@ -71,41 +68,8 @@ export type Database = {
           {
             foreignKeyName: "chats_credential_id_fkey"
             columns: ["credential_id"]
-            isOneToOne: false,
+            isOneToOne: false
             referencedRelation: "credentials"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      chat_labels: {
-        Row: {
-          chat_id: string
-          created_at: string
-          label_id: string
-        }
-        Insert: {
-          chat_id: string
-          created_at?: string
-          label_id: string
-        }
-        Update: {
-          chat_id?: string
-          created_at?: string
-          label_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "chat_labels_chat_id_fkey"
-            columns: ["chat_id"]
-            isOneToOne: false
-            referencedRelation: "chats"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "chat_labels_label_id_fkey"
-            columns: ["label_id"]
-            isOneToOne: false
-            referencedRelation: "labels"
             referencedColumns: ["id"]
           },
         ]
@@ -152,62 +116,6 @@ export type Database = {
           token?: string
           updated_at?: string
           user_id?: string | null
-        }
-        Relationships: []
-      }
-      labels: {
-        Row: {
-          color: string
-          created_at: string
-          credential_id: string
-          id: string
-          name: string
-          updated_at: string | null
-        }
-        Insert: {
-          color: string
-          created_at?: string
-          credential_id: string
-          id?: string
-          name: string
-          updated_at?: string | null
-        }
-        Update: {
-          color?: string
-          created_at?: string
-          credential_id?: string
-          id?: string
-          name?: string
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "labels_credential_id_fkey"
-            columns: ["credential_id"]
-            isOneToOne: false
-            referencedRelation: "credentials"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      credential_members: {
-        Row: {
-          created_at: string
-          credential_id: string
-          role: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          credential_id: string
-          role: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          credential_id?: string
-          role?: string
-          user_id?: string
         }
         Relationships: []
       }
@@ -267,9 +175,7 @@ export type Database = {
           created_at: string
           email: string
           id: string
-          is_active: boolean
           name: string
-          role: "admin" | "supervisor" | "agent"
           updated_at: string
         }
         Insert: {
@@ -277,9 +183,7 @@ export type Database = {
           created_at?: string
           email: string
           id?: string
-          is_active?: boolean
           name: string
-          role?: "admin" | "supervisor" | "agent"
           updated_at?: string
         }
         Update: {
@@ -287,9 +191,7 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
-          is_active?: boolean
           name?: string
-          role?: "admin" | "supervisor" | "agent"
           updated_at?: string
         }
         Relationships: []
