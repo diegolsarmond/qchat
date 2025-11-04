@@ -53,6 +53,7 @@ export type Database = {
       chats: {
         Row: {
           assigned_to: string | null
+          attendance_status: string | null
           avatar: string | null
           created_at: string
           credential_id: string
@@ -63,10 +64,12 @@ export type Database = {
           name: string
           unread_count: number | null
           updated_at: string
+          user_id: string | null
           wa_chat_id: string
         }
         Insert: {
           assigned_to?: string | null
+          attendance_status?: string | null
           avatar?: string | null
           created_at?: string
           credential_id: string
@@ -77,10 +80,12 @@ export type Database = {
           name: string
           unread_count?: number | null
           updated_at?: string
+          user_id?: string | null
           wa_chat_id: string
         }
         Update: {
           assigned_to?: string | null
+          attendance_status?: string | null
           avatar?: string | null
           created_at?: string
           credential_id?: string
@@ -91,6 +96,7 @@ export type Database = {
           name?: string
           unread_count?: number | null
           updated_at?: string
+          user_id?: string | null
           wa_chat_id?: string
         }
         Relationships: [
@@ -227,42 +233,60 @@ export type Database = {
       }
       messages: {
         Row: {
+          caption: string | null
           chat_id: string
           content: string | null
           created_at: string
+          credential_id: string | null
           from_me: boolean | null
           id: string
+          is_private: boolean | null
+          media_type: string | null
+          media_url: string | null
           message_timestamp: number
           message_type: string
           sender: string | null
           sender_name: string | null
           status: string | null
+          user_id: string | null
           wa_message_id: string
         }
         Insert: {
+          caption?: string | null
           chat_id: string
           content?: string | null
           created_at?: string
+          credential_id?: string | null
           from_me?: boolean | null
           id?: string
+          is_private?: boolean | null
+          media_type?: string | null
+          media_url?: string | null
           message_timestamp: number
           message_type?: string
           sender?: string | null
           sender_name?: string | null
           status?: string | null
+          user_id?: string | null
           wa_message_id: string
         }
         Update: {
+          caption?: string | null
           chat_id?: string
           content?: string | null
           created_at?: string
+          credential_id?: string | null
           from_me?: boolean | null
           id?: string
+          is_private?: boolean | null
+          media_type?: string | null
+          media_url?: string | null
           message_timestamp?: number
           message_type?: string
           sender?: string | null
           sender_name?: string | null
           status?: string | null
+          user_id?: string | null
           wa_message_id?: string
         }
         Relationships: [
@@ -273,7 +297,35 @@ export type Database = {
             referencedRelation: "chats"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "messages_credential_id_fkey"
+            columns: ["credential_id"]
+            isOneToOne: false
+            referencedRelation: "credentials"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
       }
       users: {
         Row: {
@@ -281,6 +333,7 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          is_active: boolean | null
           name: string
           updated_at: string
         }
@@ -289,6 +342,7 @@ export type Database = {
           created_at?: string
           email: string
           id?: string
+          is_active?: boolean | null
           name: string
           updated_at?: string
         }
@@ -297,6 +351,7 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          is_active?: boolean | null
           name?: string
           updated_at?: string
         }
@@ -307,10 +362,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_credential_member: {
+        Args: { _credential_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "supervisor" | "agent" | "owner"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -437,6 +502,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "supervisor", "agent", "owner"],
+    },
   },
 } as const

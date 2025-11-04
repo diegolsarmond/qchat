@@ -77,9 +77,13 @@ type PerformAdminUserCreationParams = {
   toast: ReturnType<typeof useToast>['toast'];
 };
 
-type AdminUser = Tables<'users'>;
-type UserRole = AdminUser['role'];
+type UserRole = "admin" | "supervisor" | "agent";
 const userRoleOptions: UserRole[] = ["admin", "supervisor", "agent"];
+
+type AdminUser = Tables<'users'> & {
+  role?: UserRole;
+  is_active?: boolean;
+};
 
 type AdminChatSummary = {
   id: string;
@@ -223,16 +227,35 @@ const Admin = () => {
     setUsersLoading(true);
 
     try {
-      const { data, error } = await supabase
+      const { data: usersData, error: usersError } = await supabase
         .from('users')
-        .select('id, name, email, role, is_active, created_at, updated_at')
+        .select('id, name, email, avatar, is_active, created_at, updated_at')
         .order('created_at', { ascending: true });
 
-      if (error) {
-        throw error;
+      if (usersError) {
+        throw usersError;
       }
 
-      setUsersList((data ?? []).map(user => ({ ...user, avatar: '' })));
+      // Fetch user roles
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id, role');
+
+      if (rolesError) {
+        console.error('Error fetching user roles:', rolesError);
+      }
+
+      // Combine users with their roles
+      const usersWithRoles = (usersData ?? []).map(user => {
+        const roleRecord = rolesData?.find(r => r.user_id === user.id);
+        return {
+          ...user,
+          role: (roleRecord?.role as UserRole) || 'agent',
+          is_active: user.is_active ?? true
+        };
+      });
+
+      setUsersList(usersWithRoles);
     } catch (error) {
       console.error('Erro ao carregar usuários', error);
       toast({
@@ -330,8 +353,8 @@ const Admin = () => {
         statusFilter === "all"
           ? true
           : statusFilter === "active"
-            ? user.is_active
-            : !user.is_active;
+            ? user.is_active !== false
+            : user.is_active === false;
       const roleMatch = roleFilter === "all" ? true : user.role === roleFilter;
       return statusMatch && roleMatch;
     });
@@ -346,7 +369,7 @@ const Admin = () => {
 
   const assignableUsers = useMemo<ChatUser[]>(() => {
     return usersList
-      .filter(user => user.is_active)
+      .filter(user => user.is_active !== false)
       .map(user => ({
         id: user.id,
         name: user.name?.trim() || user.email,
@@ -443,7 +466,7 @@ const Admin = () => {
 
   const handleToggleUserActive = useCallback(
     async (user: AdminUser) => {
-      const nextActive = !user.is_active;
+      const nextActive = user.is_active === false;
       setUserActionIds((prev) => ({ ...prev, [user.id]: true }));
 
       try {
@@ -491,10 +514,16 @@ const Admin = () => {
       setUserActionIds((prev) => ({ ...prev, [user.id]: true }));
 
       try {
+        // Delete existing role
+        await supabase
+          .from('user_roles')
+          .delete()
+          .eq('user_id', user.id);
+
+        // Insert new role
         const { error } = await supabase
-          .from('users')
-          .update({ role: nextRole })
-          .eq('id', user.id);
+          .from('user_roles')
+          .insert({ user_id: user.id, role: nextRole });
 
         if (error) {
           throw error;
@@ -1606,16 +1635,16 @@ const Admin = () => {
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <Switch
-                                  checked={user.is_active}
+                                  checked={user.is_active !== false}
                                   onCheckedChange={(checked) => {
-                                    if (checked !== user.is_active) {
+                                    if (checked !== (user.is_active !== false)) {
                                       handleToggleUserActive(user);
                                     }
                                   }}
                                   disabled={busy || usersLoading}
                                 />
                                 <span className="text-sm text-muted-foreground">
-                                  {user.is_active ? "Ativo" : "Inativo"}
+                                  {user.is_active !== false ? "Ativo" : "Inativo"}
                                 </span>
                               </div>
                             </TableCell>
