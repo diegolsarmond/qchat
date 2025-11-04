@@ -411,42 +411,52 @@ const Index = () => {
           : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
         const messageTimestampMs = mappedMessage.messageTimestamp ?? null;
 
-        setChats(prevChats => prevChats.map(chat =>
-          {
-            if (chat.id !== mappedMessage.chatId) {
-              return chat;
-            }
-
-            const shouldUpdatePreview = (() => {
-              if (payload.eventType === 'INSERT') {
-                if (messageTimestampMs === null) {
-                  return true;
-                }
-                return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
+        // Sort chats by most recent message
+        setChats(prevChats => {
+          const updatedChats = prevChats.map(chat =>
+            {
+              if (chat.id !== mappedMessage.chatId) {
+                return chat;
               }
 
-              if (payload.eventType === 'UPDATE') {
-                if (messageTimestampMs === null) {
-                  return false;
+              const shouldUpdatePreview = (() => {
+                if (payload.eventType === 'INSERT') {
+                  if (messageTimestampMs === null) {
+                    return true;
+                  }
+                  return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
                 }
-                return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
+
+                if (payload.eventType === 'UPDATE') {
+                  if (messageTimestampMs === null) {
+                    return false;
+                  }
+                  return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
+                }
+
+                return false;
+              })();
+
+              if (!shouldUpdatePreview) {
+                return chat;
               }
 
-              return false;
-            })();
-
-            if (!shouldUpdatePreview) {
-              return chat;
+              return {
+                ...chat,
+                lastMessage: previewContent,
+                timestamp: mappedMessage.timestamp,
+                lastMessageAt: messageTimestampMs ?? chat.lastMessageAt ?? null,
+              };
             }
-
-            return {
-              ...chat,
-              lastMessage: previewContent,
-              timestamp: mappedMessage.timestamp,
-              lastMessageAt: messageTimestampMs ?? chat.lastMessageAt ?? null,
-            };
-          }
-        ));
+          );
+          
+          // Sort by lastMessageAt descending (most recent first)
+          return updatedChats.sort((a, b) => {
+            const timeA = a.lastMessageAt ?? 0;
+            const timeB = b.lastMessageAt ?? 0;
+            return timeB - timeA;
+          });
+        });
 
         if (selectedChatIdRef.current && payload.new.chat_id === selectedChatIdRef.current) {
           let appended = false;
@@ -454,7 +464,14 @@ const Index = () => {
             const index = prev.findIndex(message => message.id === mappedMessage.id);
             if (index === -1) {
               appended = true;
-              return [...prev, mappedMessage];
+              const updated = [...prev, mappedMessage];
+              // Sort messages by timestamp ascending (oldest first)
+              updated.sort((a, b) => {
+                const aTime = a.messageTimestamp ?? 0;
+                const bTime = b.messageTimestamp ?? 0;
+                return aTime - bTime;
+              });
+              return updated;
             }
             const next = [...prev];
             next[index] = { ...next[index], ...mappedMessage };
@@ -478,7 +495,6 @@ const Index = () => {
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
-            filter: `credential_id=eq.${credentialId}`
           },
           handleMessageChange
         )
@@ -488,7 +504,6 @@ const Index = () => {
             event: 'UPDATE',
             schema: 'public',
             table: 'messages',
-            filter: `credential_id=eq.${credentialId}`
           },
           handleMessageChange
         )
@@ -636,12 +651,19 @@ const Index = () => {
           }
         }
 
-        setChats(enrichedChats);
+        // Sort chats by lastMessageAt (most recent first)
+        const sortedChats = enrichedChats.sort((a, b) => {
+          const timeA = a.lastMessageAt ?? 0;
+          const timeB = b.lastMessageAt ?? 0;
+          return timeB - timeA; // descending order (most recent first)
+        });
+
+        setChats(sortedChats);
         setSelectedChat(prev => {
           if (!prev) {
             return prev;
           }
-          const next = enrichedChats.find(chat => chat.id === prev.id);
+          const next = sortedChats.find(chat => chat.id === prev.id);
           return next ? { ...next } : prev;
         });
       }
@@ -684,9 +706,18 @@ const Index = () => {
 
       if (error) throw error;
 
+      console.log('Fetched messages:', { messagesCount: data?.messages?.length, reset: options.reset });
+      
       if (data?.messages) {
         const mapped = data.messages.map(mapApiMessage);
-        setMessages(prev => mergeFetchedMessages(prev, mapped, Boolean(options.reset)));
+        console.log('Mapped messages:', mapped.length);
+        
+        setMessages(prev => {
+          const merged = mergeFetchedMessages(prev, mapped, Boolean(options.reset));
+          console.log('Total messages after merge:', merged.length);
+          return merged;
+        });
+        
         setMessagePagination(prev => {
           const baseState = options.reset
             ? createInitialMessagePagination(MESSAGE_PAGE_SIZE)
