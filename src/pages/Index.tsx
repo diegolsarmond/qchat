@@ -495,6 +495,7 @@ const Index = () => {
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
+            filter: `credential_id=eq.${credentialId}`,
           },
           handleMessageChange
         )
@@ -504,6 +505,7 @@ const Index = () => {
             event: 'UPDATE',
             schema: 'public',
             table: 'messages',
+            filter: `credential_id=eq.${credentialId}`,
           },
           handleMessageChange
         )
