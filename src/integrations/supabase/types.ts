@@ -373,6 +373,10 @@ export type Database = {
         Args: { _credential_id: string; _user_id: string }
         Returns: boolean
       }
+      is_credential_owner: {
+        Args: { _credential_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "supervisor" | "agent" | "owner"
