@@ -238,6 +238,7 @@ export type Database = {
           content: string | null
           created_at: string
           credential_id: string | null
+          document_name: string | null
           from_me: boolean | null
           id: string
           is_private: boolean | null
@@ -257,6 +258,7 @@ export type Database = {
           content?: string | null
           created_at?: string
           credential_id?: string | null
+          document_name?: string | null
           from_me?: boolean | null
           id?: string
           is_private?: boolean | null
@@ -276,6 +278,7 @@ export type Database = {
           content?: string | null
           created_at?: string
           credential_id?: string | null
+          document_name?: string | null
           from_me?: boolean | null
           id?: string
           is_private?: boolean | null
