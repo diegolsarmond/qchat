@@ -404,51 +404,49 @@ const Index = () => {
         .subscribe();
 
       const handleMessageChange = (payload: any) => {
-        console.log('Message change:', payload);
+        console.log('Message realtime event:', payload.eventType, payload.new);
         const mappedMessage = mapApiMessage(payload.new as any);
         const previewContent = mappedMessage.messageType === 'text'
           ? mappedMessage.content
           : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
         const messageTimestampMs = mappedMessage.messageTimestamp ?? null;
 
-        // Sort chats by most recent message
+        // Update chat list with latest message
         setChats(prevChats => {
-          const updatedChats = prevChats.map(chat =>
-            {
-              if (chat.id !== mappedMessage.chatId) {
-                return chat;
-              }
-
-              const shouldUpdatePreview = (() => {
-                if (payload.eventType === 'INSERT') {
-                  if (messageTimestampMs === null) {
-                    return true;
-                  }
-                  return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
-                }
-
-                if (payload.eventType === 'UPDATE') {
-                  if (messageTimestampMs === null) {
-                    return false;
-                  }
-                  return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
-                }
-
-                return false;
-              })();
-
-              if (!shouldUpdatePreview) {
-                return chat;
-              }
-
-              return {
-                ...chat,
-                lastMessage: previewContent,
-                timestamp: mappedMessage.timestamp,
-                lastMessageAt: messageTimestampMs ?? chat.lastMessageAt ?? null,
-              };
+          const updatedChats = prevChats.map(chat => {
+            if (chat.id !== mappedMessage.chatId) {
+              return chat;
             }
-          );
+
+            const shouldUpdatePreview = (() => {
+              if (payload.eventType === 'INSERT') {
+                if (messageTimestampMs === null) {
+                  return true;
+                }
+                return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
+              }
+
+              if (payload.eventType === 'UPDATE') {
+                if (messageTimestampMs === null) {
+                  return false;
+                }
+                return (chat.lastMessageAt ?? -Infinity) <= messageTimestampMs;
+              }
+
+              return false;
+            })();
+
+            if (!shouldUpdatePreview) {
+              return chat;
+            }
+
+            return {
+              ...chat,
+              lastMessage: previewContent,
+              timestamp: mappedMessage.timestamp,
+              lastMessageAt: messageTimestampMs ?? chat.lastMessageAt ?? null,
+            };
+          });
           
           // Sort by lastMessageAt descending (most recent first)
           return updatedChats.sort((a, b) => {
@@ -458,32 +456,34 @@ const Index = () => {
           });
         });
 
+        // Update message list if chat is selected
         if (selectedChatIdRef.current && payload.new.chat_id === selectedChatIdRef.current) {
-          let appended = false;
           setMessages(prev => {
             const index = prev.findIndex(message => message.id === mappedMessage.id);
+            
             if (index === -1) {
-              appended = true;
+              // New message - add and sort
               const updated = [...prev, mappedMessage];
-              // Sort messages by timestamp ascending (oldest first)
               updated.sort((a, b) => {
                 const aTime = a.messageTimestamp ?? 0;
                 const bTime = b.messageTimestamp ?? 0;
                 return aTime - bTime;
               });
+              
+              // Update pagination
+              setMessagePagination(prev => ({
+                ...prev,
+                offset: prev.offset + 1,
+              }));
+              
               return updated;
+            } else {
+              // Existing message - update
+              const next = [...prev];
+              next[index] = { ...next[index], ...mappedMessage };
+              return next;
             }
-            const next = [...prev];
-            next[index] = { ...next[index], ...mappedMessage };
-            return next;
           });
-
-          if (appended) {
-            setMessagePagination(prev => ({
-              ...prev,
-              offset: prev.offset + 1,
-            }));
-          }
         }
       };
 
