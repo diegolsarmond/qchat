@@ -23,6 +23,13 @@ const handler = async (req: Request): Promise<Response> => {
       accessToken = null;
     }
 
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({ error: 'Credenciais ausentes' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
@@ -82,7 +89,13 @@ const handler = async (req: Request): Promise<Response> => {
       isSupervisorRole = metadataRoles.includes('supervisor');
     }
 
-    const { credentialId, limit = 50, offset = 0 } = await req.json();
+    const rawBody = await req.text();
+    const parsedBody = rawBody.trim().length > 0 ? JSON.parse(rawBody) : {};
+    const { credentialId, limit = 50, offset = 0 } = parsedBody as {
+      credentialId?: string;
+      limit?: number;
+      offset?: number;
+    };
 
     console.log('[UAZ Fetch Chats] Fetching chats for credential:', credentialId);
 
@@ -99,7 +112,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     let isMember = false;
 
-    if (credential && userId) {
+    if (credential && userId && credential.user_id !== userId) {
       const { data: membership } = await supabaseClient
         .from('credential_members')
         .select('user_id, role')
@@ -194,14 +207,18 @@ const handler = async (req: Request): Promise<Response> => {
     let shouldFilterByUserId = Boolean(credentialOwnerId);
 
     if (shouldFilterByUserId) {
-      const { data: scopedData } = await supabaseClient
-        .from('chats')
-        .select('user_id')
-        .eq('credential_id', credentialId)
-        .not('user_id', 'is', null)
-        .limit(1);
+      try {
+        const { data: scopedData } = await supabaseClient
+          .from('chats')
+          .select('user_id')
+          .eq('credential_id', credentialId)
+          .not('user_id', 'is', null)
+          .limit(1);
 
-      if (!scopedData || scopedData.length === 0) {
+        if (!scopedData || scopedData.length === 0) {
+          shouldFilterByUserId = false;
+        }
+      } catch (_error) {
         shouldFilterByUserId = false;
       }
     }
@@ -243,10 +260,19 @@ const handler = async (req: Request): Promise<Response> => {
 
       const { chat_labels, ...rest } = chat as { chat_labels?: unknown } & Record<string, unknown>;
 
+      const attendanceStatus = (rest.attendance_status as string | null | undefined) ?? 'waiting';
+
+      if (labels.length > 0) {
+        return {
+          ...rest,
+          attendance_status: attendanceStatus,
+          labels,
+        };
+      }
+
       return {
         ...rest,
-        attendance_status: (rest.attendance_status as string | null | undefined) ?? 'waiting',
-        labels,
+        attendance_status: attendanceStatus,
       };
     });
 
