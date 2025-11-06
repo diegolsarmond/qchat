@@ -242,6 +242,7 @@ export type Database = {
           from_me: boolean | null
           id: string
           is_private: boolean | null
+          media_base64: string | null
           media_type: string | null
           media_url: string | null
           message_timestamp: number
@@ -262,6 +263,7 @@ export type Database = {
           from_me?: boolean | null
           id?: string
           is_private?: boolean | null
+          media_base64?: string | null
           media_type?: string | null
           media_url?: string | null
           message_timestamp: number
@@ -282,6 +284,7 @@ export type Database = {
           from_me?: boolean | null
           id?: string
           is_private?: boolean | null
+          media_base64?: string | null
           media_type?: string | null
           media_url?: string | null
           message_timestamp?: number
