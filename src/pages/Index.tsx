@@ -459,29 +459,22 @@ const Index = () => {
         // Update message list if chat is selected
         if (selectedChatIdRef.current && payload.new.chat_id === selectedChatIdRef.current) {
           setMessages(prev => {
-            const index = prev.findIndex(message => message.id === mappedMessage.id);
+            // Check for duplicates by ID
+            const existingIndex = prev.findIndex(msg => msg.id === mappedMessage.id);
             
-            if (index === -1) {
-              // New message - add and sort
-              const updated = [...prev, mappedMessage];
-              updated.sort((a, b) => {
-                const aTime = a.messageTimestamp ?? 0;
-                const bTime = b.messageTimestamp ?? 0;
-                return aTime - bTime;
-              });
-              
-              // Update pagination
-              setMessagePagination(prev => ({
-                ...prev,
-                offset: prev.offset + 1,
+            if (existingIndex === -1) {
+              // New message - add to the end (already sorted by timestamp in backend)
+              setMessagePagination(prevPag => ({
+                ...prevPag,
+                offset: prevPag.offset + 1,
               }));
               
-              return updated;
+              return [...prev, mappedMessage];
             } else {
-              // Existing message - update
-              const next = [...prev];
-              next[index] = { ...next[index], ...mappedMessage };
-              return next;
+              // Update existing message (status update, etc)
+              const updated = [...prev];
+              updated[existingIndex] = { ...updated[existingIndex], ...mappedMessage };
+              return updated;
             }
           });
         }
@@ -596,6 +589,11 @@ const Index = () => {
             attendanceStatus: deriveAttendanceStatus(c),
             labels: labels.length > 0 ? labels : undefined,
           };
+        }).sort((a, b) => {
+          // Sort by most recent message first
+          const timeA = a.lastMessageAt ?? 0;
+          const timeB = b.lastMessageAt ?? 0;
+          return timeB - timeA;
         });
 
         let enrichedChats = mappedChats;
@@ -999,17 +997,32 @@ const Index = () => {
         locationName: payload.locationName,
       };
 
-      setMessages(prev => [...prev, newMessage]);
+      setMessages(prev => {
+        // Avoid duplicates
+        if (prev.some(msg => msg.id === waMessageId)) {
+          return prev;
+        }
+        return [...prev, newMessage];
+      });
+      
       setMessagePagination(prev => ({
         ...prev,
         offset: prev.offset + 1,
       }));
 
-      setChats(prevChats => prevChats.map(c =>
-        c.id === selectedChat.id
-          ? { ...c, lastMessage: messageContent, timestamp: newMessage.timestamp, lastMessageAt: now }
-          : c
-      ));
+      setChats(prevChats => {
+        const updated = prevChats.map(c =>
+          c.id === selectedChat.id
+            ? { ...c, lastMessage: messageContent, timestamp: newMessage.timestamp, lastMessageAt: now }
+            : c
+        );
+        // Re-sort after updating
+        return updated.sort((a, b) => {
+          const timeA = a.lastMessageAt ?? 0;
+          const timeB = b.lastMessageAt ?? 0;
+          return timeB - timeA;
+        });
+      });
 
       toast({
         title: payload.isPrivate ? "Salvo" : "Enviado",
