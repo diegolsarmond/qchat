@@ -92,6 +92,7 @@ const Index = () => {
     profileName: null as string | null,
     phoneNumber: null as string | null,
   });
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
   const { toast } = useToast();
   const connectionCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedChatIdRef = useRef<string | null>(null);
@@ -491,6 +492,10 @@ const Index = () => {
                 ...prevPag,
                 offset: prevPag.offset + 1,
               }));
+              
+              // Trigger scroll to bottom for new messages
+              setShouldScrollToBottom(true);
+              setTimeout(() => setShouldScrollToBottom(false), 100);
               
               return [...prev, mappedMessage];
             } else {
@@ -1387,6 +1392,7 @@ const Index = () => {
           onAssignLabel={handleAssignLabelToChat}
           onRemoveLabel={handleRemoveLabelFromChat}
           userRole={normalizedUserRole}
+          shouldScrollToBottom={shouldScrollToBottom}
         />
       </div>
 

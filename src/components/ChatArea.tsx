@@ -491,6 +491,7 @@ interface ChatAreaProps {
   onAssignLabel?: (chatId: string, label: Label) => Promise<void> | void;
   onRemoveLabel?: (chatId: string, label: Label) => Promise<void> | void;
   userRole?: string | null;
+  shouldScrollToBottom?: boolean;
 }
 
 export const ChatArea = ({
@@ -509,6 +510,7 @@ export const ChatArea = ({
   onAssignLabel,
   onRemoveLabel,
   userRole,
+  shouldScrollToBottom = false,
 }: ChatAreaProps) => {
   const [messageText, setMessageText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -855,10 +857,10 @@ export const ChatArea = ({
   }, [urlMediaSources, base64MediaSources, securedMediaSources]);
 
   useEffect(() => {
-    if (!isPrependingMessages) {
+    if (!isPrependingMessages || shouldScrollToBottom) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
-  }, [orderedMessages, isPrependingMessages]);
+  }, [orderedMessages, isPrependingMessages, shouldScrollToBottom]);
 
   const handleSend = () => {
     if (messageText.trim()) {
