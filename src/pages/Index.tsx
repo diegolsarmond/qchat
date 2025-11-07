@@ -460,12 +460,33 @@ const Index = () => {
 
         // Update message list if chat is selected
         if (selectedChatIdRef.current && payload.new.chat_id === selectedChatIdRef.current) {
+          console.log('[Realtime Message] Adding to chat:', {
+            chatId: payload.new.chat_id,
+            messageId: mappedMessage.id,
+            content: mappedMessage.content?.substring(0, 50)
+          });
+
           setMessages(prev => {
-            // Check for duplicates by ID
-            const existingIndex = prev.findIndex(msg => msg.id === mappedMessage.id);
+            // Check for duplicates by wa_message_id (ID mais confiável)
+            const existingIndex = prev.findIndex(msg => {
+              // Tenta encontrar por ID do WhatsApp primeiro
+              if (mappedMessage.id && msg.id === mappedMessage.id) {
+                return true;
+              }
+              // Fallback: mensagem idêntica no mesmo timestamp
+              if (
+                msg.messageTimestamp === mappedMessage.messageTimestamp &&
+                msg.content === mappedMessage.content &&
+                msg.from === mappedMessage.from
+              ) {
+                return true;
+              }
+              return false;
+            });
             
             if (existingIndex === -1) {
               // New message - add to the end (already sorted by timestamp in backend)
+              console.log('[Realtime Message] Added new message to list');
               setMessagePagination(prevPag => ({
                 ...prevPag,
                 offset: prevPag.offset + 1,
@@ -474,10 +495,16 @@ const Index = () => {
               return [...prev, mappedMessage];
             } else {
               // Update existing message (status update, etc)
+              console.log('[Realtime Message] Updated existing message');
               const updated = [...prev];
               updated[existingIndex] = { ...updated[existingIndex], ...mappedMessage };
               return updated;
             }
+          });
+        } else {
+          console.log('[Realtime Message] Skipped - not for selected chat:', {
+            messageChatId: payload.new.chat_id,
+            selectedChatId: selectedChatIdRef.current
           });
         }
       };
