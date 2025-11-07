@@ -97,6 +97,13 @@ const handler = async (req: Request): Promise<Response> => {
       offset?: number;
     };
 
+    if (!credentialId) {
+      return new Response(
+        JSON.stringify({ error: 'credentialId é obrigatório' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log('[UAZ Fetch Chats] Fetching chats for credential:', credentialId);
 
     // Fetch credential
