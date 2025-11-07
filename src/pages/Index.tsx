@@ -95,6 +95,8 @@ const Index = () => {
   const { toast } = useToast();
   const connectionCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedChatIdRef = useRef<string | null>(null);
+  const fetchChatsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFetchRef = useRef<number>(0);
 
   const clearConnectionInterval = useCallback(() => {
     if (connectionCheckIntervalRef.current) {
@@ -514,7 +516,13 @@ const Index = () => {
             table: 'chat_labels',
           },
           () => {
-            fetchChats();
+            // Debounce: espera 500ms antes de chamar fetchChats
+            if (fetchChatsTimeoutRef.current) {
+              clearTimeout(fetchChatsTimeoutRef.current);
+            }
+            fetchChatsTimeoutRef.current = setTimeout(() => {
+              fetchChats();
+            }, 500);
           }
         )
         .subscribe();
@@ -546,8 +554,22 @@ const Index = () => {
     return "waiting";
   };
 
-  const fetchChats = async () => {
+  const fetchChats = useCallback(async () => {
     if (!credentialId) return;
+
+    // Debounce: evita chamadas repetidas em menos de 1 segundo
+    const now = Date.now();
+    if (now - lastFetchRef.current < 1000) {
+      console.log('[fetchChats] Debounced - too soon');
+      return;
+    }
+    lastFetchRef.current = now;
+
+    // Limpa timeout anterior se existir
+    if (fetchChatsTimeoutRef.current) {
+      clearTimeout(fetchChatsTimeoutRef.current);
+      fetchChatsTimeoutRef.current = null;
+    }
 
     setLoading(true);
     try {
@@ -669,15 +691,12 @@ const Index = () => {
       }
     } catch (error) {
       console.error('Error fetching chats:', error);
-      toast({
-        title: "Erro",
-        description: "Falha ao carregar conversas",
-        variant: "destructive",
-      });
+      // Em caso de erro, não tenta novamente imediatamente
+      lastFetchRef.current = Date.now();
     } finally {
       setLoading(false);
     }
-  };
+  }, [credentialId]);
 
   const fetchMessages = async (chatId: string, options: { reset?: boolean } = { reset: false }) => {
     if (!credentialId) return;
