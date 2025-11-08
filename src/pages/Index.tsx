@@ -525,7 +525,56 @@ const Index = () => {
           },
           (payload) => {
             console.log('Message INSERT event:', payload);
-            handleMessageChange(payload);
+            const dbMessage = payload.new as any;
+            
+            // Converter mensagem do banco para o formato esperado
+            const newMessage: Message = {
+              id: dbMessage.id,
+              chatId: dbMessage.chat_id,
+              content: dbMessage.content || '',
+              timestamp: new Date(dbMessage.created_at).toISOString(),
+              messageTimestamp: dbMessage.message_timestamp,
+              from: dbMessage.from_me ? 'me' : 'them',
+              status: dbMessage.status?.toLowerCase() as any,
+              messageType: dbMessage.message_type as any,
+              mediaType: dbMessage.media_type,
+              caption: dbMessage.caption,
+              documentName: dbMessage.document_name,
+              mediaUrl: dbMessage.media_url,
+              mediaBase64: dbMessage.media_base64,
+              isPrivate: dbMessage.is_private
+            };
+            
+            // Atualizar lista de mensagens se for do chat selecionado
+            if (selectedChat && newMessage.chatId === selectedChat.id) {
+              setMessages((prev) => {
+                const exists = prev.some(m => m.id === newMessage.id);
+                if (exists) return prev;
+                return [...prev, newMessage].sort((a, b) => 
+                  (a.messageTimestamp || 0) - (b.messageTimestamp || 0)
+                );
+              });
+              setShouldScrollToBottom(true);
+            }
+            
+            // Atualizar última mensagem no chat da lista
+            setChats((prev) => {
+              return prev.map(chat => {
+                if (chat.id === newMessage.chatId) {
+                  return {
+                    ...chat,
+                    lastMessage: newMessage.content || '',
+                    lastMessageAt: newMessage.messageTimestamp || Date.now(),
+                    timestamp: new Date(newMessage.messageTimestamp || Date.now()).toLocaleTimeString('pt-BR', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    }),
+                    unread: newMessage.from === 'me' ? chat.unread : (chat.unread || 0) + 1
+                  };
+                }
+                return chat;
+              }).sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
+            });
           }
         )
         .on(
@@ -538,7 +587,32 @@ const Index = () => {
           },
           (payload) => {
             console.log('Message UPDATE event:', payload);
-            handleMessageChange(payload);
+            const dbMessage = payload.new as any;
+            
+            // Converter mensagem do banco para o formato esperado
+            const updatedMessage: Message = {
+              id: dbMessage.id,
+              chatId: dbMessage.chat_id,
+              content: dbMessage.content || '',
+              timestamp: new Date(dbMessage.created_at).toISOString(),
+              messageTimestamp: dbMessage.message_timestamp,
+              from: dbMessage.from_me ? 'me' : 'them',
+              status: dbMessage.status?.toLowerCase() as any,
+              messageType: dbMessage.message_type as any,
+              mediaType: dbMessage.media_type,
+              caption: dbMessage.caption,
+              documentName: dbMessage.document_name,
+              mediaUrl: dbMessage.media_url,
+              mediaBase64: dbMessage.media_base64,
+              isPrivate: dbMessage.is_private
+            };
+            
+            // Atualizar mensagem na lista se for do chat selecionado
+            if (selectedChat && updatedMessage.chatId === selectedChat.id) {
+              setMessages((prev) => 
+                prev.map(m => m.id === updatedMessage.id ? updatedMessage : m)
+              );
+            }
           }
         )
         .subscribe((status) => {
