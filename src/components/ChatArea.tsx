@@ -21,7 +21,8 @@ import {
   Unlock,
   MapPin,
   Download,
-  Tag
+  Tag,
+  Loader2
 } from "lucide-react";
 import { Chat, Message, SendMessagePayload, Label } from "@/types/whatsapp";
 import {
@@ -1234,14 +1235,22 @@ export const ChatArea = ({
         <div className="space-y-3 max-w-4xl mx-auto">
           <div ref={messagesStartRef} />
           {hasMoreMessages && onLoadMoreMessages && (
-            <div className="flex justify-center">
+            <div className="flex justify-center py-2">
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={onLoadMoreMessages}
                 disabled={isLoadingMoreMessages}
+                className="text-muted-foreground hover:text-foreground transition-colors"
               >
-                {isLoadingMoreMessages ? "Carregando..." : "Carregar mensagens anteriores"}
+                {isLoadingMoreMessages ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Carregando mensagens...
+                  </>
+                ) : (
+                  "Carregar mensagens anteriores"
+                )}
               </Button>
             </div>
           )}
