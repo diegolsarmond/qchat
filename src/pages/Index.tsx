@@ -98,51 +98,12 @@ const Index = () => {
   const selectedChatIdRef = useRef<string | null>(null);
   const fetchChatsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFetchRef = useRef<number>(0);
-  const audioContextRef = useRef<AudioContext | null>(null);
 
   const clearConnectionInterval = useCallback(() => {
     if (connectionCheckIntervalRef.current) {
       clearInterval(connectionCheckIntervalRef.current);
       connectionCheckIntervalRef.current = null;
     }
-  }, []);
-
-  const playNotificationSound = useCallback(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const ContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!ContextClass) {
-      return;
-    }
-
-    const context = audioContextRef.current ?? new ContextClass();
-    audioContextRef.current = context;
-
-    const start = () => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(880, context.currentTime);
-      gain.gain.setValueAtTime(0, context.currentTime);
-      gain.gain.linearRampToValueAtTime(0.08, context.currentTime + 0.01);
-      gain.gain.linearRampToValueAtTime(0.0001, context.currentTime + 0.2);
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      oscillator.start();
-      oscillator.stop(context.currentTime + 0.2);
-    };
-
-    if (context.state === "suspended") {
-      context
-        .resume()
-        .then(start)
-        .catch(() => {});
-      return;
-    }
-
-    start();
   }, []);
 
   const fetchCredentialProfile = useCallback(
@@ -463,9 +424,6 @@ const Index = () => {
 
       const handleMessageChange = (payload: any) => {
         const mappedMessage = mapApiMessage(payload.new as any);
-        if (payload.eventType === 'INSERT' && mappedMessage.from === 'them') {
-          playNotificationSound();
-        }
         const previewContent = mappedMessage.messageType === 'text'
           ? mappedMessage.content
           : mappedMessage.caption || `[${mappedMessage.mediaType || 'mídia'}]`;
@@ -606,7 +564,7 @@ const Index = () => {
         supabase.removeChannel(chatLabelsChannel);
       };
     }
-  }, [isConnected, credentialId, playNotificationSound]);
+  }, [isConnected, credentialId]);
 
   const deriveAttendanceStatus = (chat: any): Chat["attendanceStatus"] => {
     const raw =
