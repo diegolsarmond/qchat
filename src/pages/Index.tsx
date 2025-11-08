@@ -401,19 +401,28 @@ const Index = () => {
           },
           (payload) => {
             console.log('Chat change:', payload);
-            fetchChats(); // Refresh chats on any change
+            // Update chat in real-time without full reload
+            if (payload.eventType === 'UPDATE' && payload.new) {
+              setChats(prev => prev.map(chat => 
+                chat.id === payload.new.id 
+                  ? {
+                      ...chat,
+                      name: payload.new.name || chat.name,
+                      avatar: payload.new.avatar || chat.avatar,
+                      unread: payload.new.unread_count ?? chat.unread,
+                      attendanceStatus: deriveAttendanceStatus(payload.new),
+                    }
+                  : chat
+              ));
+            } else if (payload.eventType === 'INSERT' && payload.new) {
+              // New chat - fetch all to maintain proper order
+              fetchChats();
+            }
           }
         )
         .subscribe();
 
       const handleMessageChange = (payload: any) => {
-        console.log('[Realtime] Message event received:', {
-          eventType: payload.eventType,
-          chatId: payload.new.chat_id,
-          messageId: payload.new.wa_message_id,
-          selectedChatId: selectedChatIdRef.current,
-          content: payload.new.content?.substring(0, 50)
-        });
         const mappedMessage = mapApiMessage(payload.new as any);
         const previewContent = mappedMessage.messageType === 'text'
           ? mappedMessage.content
@@ -466,29 +475,13 @@ const Index = () => {
         });
 
         // Update message list if chat is selected
-        const isChatSelected = selectedChatIdRef.current === payload.new.chat_id;
-        console.log('[Realtime] Chat selected check:', {
-          isChatSelected,
-          selectedChatIdRef: selectedChatIdRef.current,
-          messageChatId: payload.new.chat_id,
-          areEqual: selectedChatIdRef.current === payload.new.chat_id
-        });
-        
-        if (isChatSelected) {
-          console.log('[Realtime Message] Adding to chat:', {
-            chatId: payload.new.chat_id,
-            messageId: mappedMessage.id,
-            content: mappedMessage.content?.substring(0, 50)
-          });
-
+        if (selectedChatIdRef.current === payload.new.chat_id) {
           setMessages(prev => {
-            // Check for duplicates by wa_message_id (ID mais confiável)
+            // Check for duplicates by wa_message_id
             const existingIndex = prev.findIndex(msg => {
-              // Tenta encontrar por ID do WhatsApp primeiro
               if (mappedMessage.id && msg.id === mappedMessage.id) {
                 return true;
               }
-              // Fallback: mensagem idêntica no mesmo timestamp
               if (
                 msg.messageTimestamp === mappedMessage.messageTimestamp &&
                 msg.content === mappedMessage.content &&
@@ -500,30 +493,22 @@ const Index = () => {
             });
             
             if (existingIndex === -1) {
-              // New message - add to the end (already sorted by timestamp in backend)
-              console.log('[Realtime Message] Added new message to list');
+              // New message - add to the end
               setMessagePagination(prevPag => ({
                 ...prevPag,
                 offset: prevPag.offset + 1,
               }));
               
-              // Trigger scroll to bottom for new messages
               setShouldScrollToBottom(true);
               setTimeout(() => setShouldScrollToBottom(false), 100);
               
               return [...prev, mappedMessage];
             } else {
-              // Update existing message (status update, etc)
-              console.log('[Realtime Message] Updated existing message');
+              // Update existing message
               const updated = [...prev];
               updated[existingIndex] = { ...updated[existingIndex], ...mappedMessage };
               return updated;
             }
-          });
-        } else {
-          console.log('[Realtime Message] Skipped - not for selected chat:', {
-            messageChatId: payload.new.chat_id,
-            selectedChatId: selectedChatIdRef.current
           });
         }
       };
@@ -602,20 +587,6 @@ const Index = () => {
 
   const fetchChats = useCallback(async () => {
     if (!credentialId) return;
-
-    // Debounce: evita chamadas repetidas em menos de 1 segundo
-    const now = Date.now();
-    if (now - lastFetchRef.current < 1000) {
-      console.log('[fetchChats] Debounced - too soon');
-      return;
-    }
-    lastFetchRef.current = now;
-
-    // Limpa timeout anterior se existir
-    if (fetchChatsTimeoutRef.current) {
-      clearTimeout(fetchChatsTimeoutRef.current);
-      fetchChatsTimeoutRef.current = null;
-    }
 
     setLoading(true);
     try {
