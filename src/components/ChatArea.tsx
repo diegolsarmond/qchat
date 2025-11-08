@@ -526,6 +526,8 @@ export const ChatArea = ({
   const messagesStartRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const previousScrollHeightRef = useRef<number>(0);
   const normalizedUserRole = typeof userRole === "string" ? userRole.toLowerCase() : null;
   const canManageAttendance = normalizedUserRole === "admin" || normalizedUserRole === "supervisor" || normalizedUserRole === "owner";
   const attendanceRestrictionLabel = "Disponível apenas para administradores e supervisores";
@@ -858,7 +860,38 @@ export const ChatArea = ({
   }, [urlMediaSources, base64MediaSources, securedMediaSources]);
 
   useEffect(() => {
-    if (!isPrependingMessages || shouldScrollToBottom) {
+    if (isPrependingMessages && scrollContainerRef.current) {
+      // Save scroll height before new messages load
+      const container = scrollContainerRef.current;
+      const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement;
+      if (viewport) {
+        previousScrollHeightRef.current = viewport.scrollHeight;
+      }
+    }
+  }, [isPrependingMessages]);
+
+  useEffect(() => {
+    if (!scrollContainerRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      return;
+    }
+
+    const container = scrollContainerRef.current;
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement;
+    
+    if (!viewport) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      return;
+    }
+
+    if (isPrependingMessages && previousScrollHeightRef.current > 0) {
+      // Restore scroll position after new messages load
+      const newScrollHeight = viewport.scrollHeight;
+      const heightDifference = newScrollHeight - previousScrollHeightRef.current;
+      viewport.scrollTop = heightDifference;
+      previousScrollHeightRef.current = 0;
+    } else if (!isPrependingMessages || shouldScrollToBottom) {
+      // Normal scroll to bottom for new messages
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
   }, [orderedMessages, isPrependingMessages, shouldScrollToBottom]);
@@ -1229,7 +1262,7 @@ export const ChatArea = ({
         </div>
       </div>
 
-      <ScrollArea className="flex-1 p-4" style={{
+      <ScrollArea ref={scrollContainerRef} className="flex-1 p-4" style={{
         backgroundImage: `url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 10h1v1h-1z' fill='%23000000' fill-opacity='0.02'/%3E%3C/svg%3E")`,
       }}>
         <div className="space-y-3 max-w-4xl mx-auto">
