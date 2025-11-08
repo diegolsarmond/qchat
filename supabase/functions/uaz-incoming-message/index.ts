@@ -188,10 +188,16 @@ const handler = async (req: Request): Promise<Response> => {
 
     const credentialUserId = typeof ownedCredential.user_id === "string" ? ownedCredential.user_id : null;
 
-    console.log(`[UAZ Incoming Message] Processing ${normalized.length} messages`);
+    console.log(`[UAZ Incoming Message] Processing ${normalized.length} messages for credentialId: ${credentialId}`);
 
-    // Broadcast mensagens em tempo real ANTES de processar no banco
-    const broadcastChannel = supabaseClient.channel('realtime-messages');
+    // Criar cliente Supabase com service role key para broadcast
+    const broadcastClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
+    
+    const broadcastChannel = broadcastClient.channel('realtime-messages');
+    let broadcastCount = 0;
     
     for (const message of normalized) {
       const { data: chat } = await supabaseClient
@@ -202,32 +208,41 @@ const handler = async (req: Request): Promise<Response> => {
         .maybeSingle();
 
       if (chat) {
+        const broadcastPayload = {
+          id: `temp_${Date.now()}_${Math.random()}`,
+          chatId: chat.id,
+          content: message.text || '',
+          messageTimestamp: message.messageTimestamp,
+          fromMe: message.fromMe,
+          messageType: message.messageType,
+          mediaType: message.mediaType,
+          caption: message.caption,
+          documentName: message.documentName,
+          mediaUrl: message.mediaUrl,
+          mediaBase64: message.mediaBase64,
+          isPrivate: message.isPrivate,
+          status: message.status,
+          sender: message.sender,
+          senderName: message.senderName
+        };
+
+        console.log(`[UAZ Incoming Message] Broadcasting message for chat ${chat.id}:`, JSON.stringify(broadcastPayload));
+        
         // Broadcast imediato para o frontend
-        await broadcastChannel.send({
+        const broadcastResult = await broadcastChannel.send({
           type: 'broadcast',
           event: 'new_message',
-          payload: {
-            id: `temp_${Date.now()}_${Math.random()}`,
-            chatId: chat.id,
-            content: message.text || '',
-            messageTimestamp: message.messageTimestamp,
-            fromMe: message.fromMe,
-            messageType: message.messageType,
-            mediaType: message.mediaType,
-            caption: message.caption,
-            documentName: message.documentName,
-            mediaUrl: message.mediaUrl,
-            mediaBase64: message.mediaBase64,
-            isPrivate: message.isPrivate,
-            status: message.status,
-            sender: message.sender,
-            senderName: message.senderName
-          }
+          payload: broadcastPayload
         });
         
-        console.log(`[UAZ Incoming Message] Broadcasted message for chat ${chat.id}`);
+        console.log(`[UAZ Incoming Message] Broadcast result:`, broadcastResult);
+        broadcastCount++;
+      } else {
+        console.log(`[UAZ Incoming Message] Chat not found for wa_chat_id: ${message.waChatId}`);
       }
     }
+
+    console.log(`[UAZ Incoming Message] Broadcasted ${broadcastCount} messages`);
 
     // Processar e armazenar no banco em background (não bloqueia o broadcast)
     processIncomingMessages({
@@ -244,7 +259,7 @@ const handler = async (req: Request): Promise<Response> => {
       JSON.stringify({ 
         success: true, 
         processed: normalized.length,
-        broadcasted: true
+        broadcasted: broadcastCount
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
