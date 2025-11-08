@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -525,6 +525,10 @@ export const ChatArea = ({
   const recorderRef = useRef<ReturnType<typeof createAudioRecorder> | null>(null);
   const messagesStartRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const prependingSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  const previousMessageCountRef = useRef(orderedMessages.length);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const normalizedUserRole = typeof userRole === "string" ? userRole.toLowerCase() : null;
   const canManageAttendance = normalizedUserRole === "admin" || normalizedUserRole === "supervisor" || normalizedUserRole === "owner";
@@ -857,11 +861,60 @@ export const ChatArea = ({
     return { ...urlMediaSources, ...base64MediaSources, ...securedMediaSources };
   }, [urlMediaSources, base64MediaSources, securedMediaSources]);
 
-  useEffect(() => {
-    if (!isPrependingMessages || shouldScrollToBottom) {
+  const getViewport = useCallback(() => {
+    if (viewportRef.current) {
+      return viewportRef.current;
+    }
+    const root = scrollAreaRef.current;
+    if (!root) {
+      return null;
+    }
+    const element = root.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null;
+    viewportRef.current = element;
+    return element;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isPrependingMessages) {
+      return;
+    }
+    if (orderedMessages.length !== previousMessageCountRef.current) {
+      return;
+    }
+    const viewport = getViewport();
+    if (!viewport) {
+      return;
+    }
+    prependingSnapshotRef.current = {
+      scrollHeight: viewport.scrollHeight,
+      scrollTop: viewport.scrollTop,
+    };
+  }, [isPrependingMessages, orderedMessages.length, getViewport]);
+
+  useLayoutEffect(() => {
+    const viewport = getViewport();
+
+    if (shouldScrollToBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      prependingSnapshotRef.current = null;
+      previousMessageCountRef.current = orderedMessages.length;
+      return;
+    }
+
+    if (prependingSnapshotRef.current && viewport) {
+      const { scrollHeight, scrollTop } = prependingSnapshotRef.current;
+      const heightDifference = viewport.scrollHeight - scrollHeight;
+      viewport.scrollTop = scrollTop + heightDifference;
+      prependingSnapshotRef.current = null;
+      previousMessageCountRef.current = orderedMessages.length;
+      return;
+    }
+
+    if (!isPrependingMessages) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
-  }, [orderedMessages, isPrependingMessages, shouldScrollToBottom]);
+    previousMessageCountRef.current = orderedMessages.length;
+  }, [orderedMessages, isPrependingMessages, shouldScrollToBottom, getViewport]);
 
   const handleSend = () => {
     if (messageText.trim()) {
@@ -1229,7 +1282,7 @@ export const ChatArea = ({
         </div>
       </div>
 
-      <ScrollArea className="flex-1 p-4" style={{
+      <ScrollArea ref={scrollAreaRef} className="flex-1 p-4" style={{
         backgroundImage: `url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 10h1v1h-1z' fill='%23000000' fill-opacity='0.02'/%3E%3C/svg%3E")`,
       }}>
         <div className="space-y-3 max-w-4xl mx-auto">
