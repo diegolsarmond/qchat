@@ -188,16 +188,64 @@ const handler = async (req: Request): Promise<Response> => {
 
     const credentialUserId = typeof ownedCredential.user_id === "string" ? ownedCredential.user_id : null;
 
-    const processed = await processIncomingMessages({
+    console.log(`[UAZ Incoming Message] Processing ${normalized.length} messages`);
+
+    // Broadcast mensagens em tempo real ANTES de processar no banco
+    const broadcastChannel = supabaseClient.channel('realtime-messages');
+    
+    for (const message of normalized) {
+      const { data: chat } = await supabaseClient
+        .from("chats")
+        .select("id")
+        .eq("credential_id", credentialId)
+        .eq("wa_chat_id", message.waChatId)
+        .maybeSingle();
+
+      if (chat) {
+        // Broadcast imediato para o frontend
+        await broadcastChannel.send({
+          type: 'broadcast',
+          event: 'new_message',
+          payload: {
+            id: `temp_${Date.now()}_${Math.random()}`,
+            chatId: chat.id,
+            content: message.text || '',
+            messageTimestamp: message.messageTimestamp,
+            fromMe: message.fromMe,
+            messageType: message.messageType,
+            mediaType: message.mediaType,
+            caption: message.caption,
+            documentName: message.documentName,
+            mediaUrl: message.mediaUrl,
+            mediaBase64: message.mediaBase64,
+            isPrivate: message.isPrivate,
+            status: message.status,
+            sender: message.sender,
+            senderName: message.senderName
+          }
+        });
+        
+        console.log(`[UAZ Incoming Message] Broadcasted message for chat ${chat.id}`);
+      }
+    }
+
+    // Processar e armazenar no banco em background (não bloqueia o broadcast)
+    processIncomingMessages({
       supabaseClient,
       credentialId,
       userId,
       credentialUserId,
       messages: normalized,
+    }).catch(err => {
+      console.error('[UAZ Incoming Message] Error storing messages:', err);
     });
 
     return new Response(
-      JSON.stringify({ success: true, processed }),
+      JSON.stringify({ 
+        success: true, 
+        processed: normalized.length,
+        broadcasted: true
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {

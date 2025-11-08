@@ -513,70 +513,72 @@ const Index = () => {
         }
       };
 
+      // Canal de broadcast para mensagens em tempo real do webhook
+      const realtimeMessagesChannel = supabase
+        .channel('realtime-messages')
+        .on('broadcast', { event: 'new_message' }, (payload) => {
+          console.log('Realtime broadcast message:', payload);
+          const messageData = payload.payload;
+          
+          // Converter para formato Message
+          const newMessage: Message = {
+            id: messageData.id || `temp_${Date.now()}`,
+            chatId: messageData.chatId,
+            content: messageData.content || '',
+            timestamp: new Date().toISOString(),
+            messageTimestamp: messageData.messageTimestamp || Date.now(),
+            from: messageData.fromMe ? 'me' : 'them',
+            status: 'sent',
+            messageType: messageData.messageType as any,
+            mediaType: messageData.mediaType,
+            caption: messageData.caption,
+            documentName: messageData.documentName,
+            mediaUrl: messageData.mediaUrl,
+            mediaBase64: messageData.mediaBase64,
+            isPrivate: messageData.isPrivate
+          };
+          
+          // Atualizar mensagens se for do chat selecionado
+          if (selectedChat && newMessage.chatId === selectedChat.id) {
+            setMessages((prev) => {
+              const exists = prev.some(m => 
+                m.id === newMessage.id || 
+                (m.messageTimestamp === newMessage.messageTimestamp && m.content === newMessage.content)
+              );
+              if (exists) return prev;
+              return [...prev, newMessage].sort((a, b) => 
+                (a.messageTimestamp || 0) - (b.messageTimestamp || 0)
+              );
+            });
+            setShouldScrollToBottom(true);
+          }
+          
+          // Atualizar última mensagem no chat
+          setChats((prev) => {
+            return prev.map(chat => {
+              if (chat.id === newMessage.chatId) {
+                return {
+                  ...chat,
+                  lastMessage: newMessage.content || '',
+                  lastMessageAt: newMessage.messageTimestamp || Date.now(),
+                  timestamp: new Date(newMessage.messageTimestamp || Date.now()).toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }),
+                  unread: newMessage.from === 'me' ? chat.unread : (chat.unread || 0) + 1
+                };
+              }
+              return chat;
+            }).sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
+          });
+        })
+        .subscribe((status) => {
+          console.log('Realtime messages channel status:', status);
+        });
+
+      // Manter canal do banco apenas para updates de status
       const messagesChannel = supabase
         .channel('messages-changes')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `credential_id=eq.${credentialId}`,
-          },
-          (payload) => {
-            console.log('Message INSERT event:', payload);
-            const dbMessage = payload.new as any;
-            
-            // Converter mensagem do banco para o formato esperado
-            const newMessage: Message = {
-              id: dbMessage.id,
-              chatId: dbMessage.chat_id,
-              content: dbMessage.content || '',
-              timestamp: new Date(dbMessage.created_at).toISOString(),
-              messageTimestamp: dbMessage.message_timestamp,
-              from: dbMessage.from_me ? 'me' : 'them',
-              status: dbMessage.status?.toLowerCase() as any,
-              messageType: dbMessage.message_type as any,
-              mediaType: dbMessage.media_type,
-              caption: dbMessage.caption,
-              documentName: dbMessage.document_name,
-              mediaUrl: dbMessage.media_url,
-              mediaBase64: dbMessage.media_base64,
-              isPrivate: dbMessage.is_private
-            };
-            
-            // Atualizar lista de mensagens se for do chat selecionado
-            if (selectedChat && newMessage.chatId === selectedChat.id) {
-              setMessages((prev) => {
-                const exists = prev.some(m => m.id === newMessage.id);
-                if (exists) return prev;
-                return [...prev, newMessage].sort((a, b) => 
-                  (a.messageTimestamp || 0) - (b.messageTimestamp || 0)
-                );
-              });
-              setShouldScrollToBottom(true);
-            }
-            
-            // Atualizar última mensagem no chat da lista
-            setChats((prev) => {
-              return prev.map(chat => {
-                if (chat.id === newMessage.chatId) {
-                  return {
-                    ...chat,
-                    lastMessage: newMessage.content || '',
-                    lastMessageAt: newMessage.messageTimestamp || Date.now(),
-                    timestamp: new Date(newMessage.messageTimestamp || Date.now()).toLocaleTimeString('pt-BR', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    }),
-                    unread: newMessage.from === 'me' ? chat.unread : (chat.unread || 0) + 1
-                  };
-                }
-                return chat;
-              }).sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
-            });
-          }
-        )
         .on(
           'postgres_changes',
           {
@@ -589,28 +591,20 @@ const Index = () => {
             console.log('Message UPDATE event:', payload);
             const dbMessage = payload.new as any;
             
-            // Converter mensagem do banco para o formato esperado
-            const updatedMessage: Message = {
-              id: dbMessage.id,
-              chatId: dbMessage.chat_id,
-              content: dbMessage.content || '',
-              timestamp: new Date(dbMessage.created_at).toISOString(),
-              messageTimestamp: dbMessage.message_timestamp,
-              from: dbMessage.from_me ? 'me' : 'them',
-              status: dbMessage.status?.toLowerCase() as any,
-              messageType: dbMessage.message_type as any,
-              mediaType: dbMessage.media_type,
-              caption: dbMessage.caption,
-              documentName: dbMessage.document_name,
-              mediaUrl: dbMessage.media_url,
-              mediaBase64: dbMessage.media_base64,
-              isPrivate: dbMessage.is_private
-            };
-            
-            // Atualizar mensagem na lista se for do chat selecionado
-            if (selectedChat && updatedMessage.chatId === selectedChat.id) {
+            // Atualizar apenas status da mensagem
+            if (selectedChat && dbMessage.chat_id === selectedChat.id) {
               setMessages((prev) => 
-                prev.map(m => m.id === updatedMessage.id ? updatedMessage : m)
+                prev.map(m => {
+                  if (m.id === dbMessage.id || 
+                      (m.messageTimestamp === dbMessage.message_timestamp && m.content === dbMessage.content)) {
+                    return {
+                      ...m,
+                      id: dbMessage.id,
+                      status: dbMessage.status?.toLowerCase() as any
+                    };
+                  }
+                  return m;
+                })
               );
             }
           }
@@ -641,6 +635,7 @@ const Index = () => {
         .subscribe();
 
       return () => {
+        supabase.removeChannel(realtimeMessagesChannel);
         supabase.removeChannel(chatsChannel);
         supabase.removeChannel(messagesChannel);
         supabase.removeChannel(chatLabelsChannel);
