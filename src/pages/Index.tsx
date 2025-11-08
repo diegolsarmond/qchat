@@ -742,15 +742,12 @@ const Index = () => {
 
       if (error) throw error;
 
-      console.log('Fetched messages:', { messagesCount: data?.messages?.length, reset: options.reset });
       
       if (data?.messages) {
         const mapped = data.messages.map(mapApiMessage);
-        console.log('Mapped messages:', mapped.length);
         
         setMessages(prev => {
           const merged = mergeFetchedMessages(prev, mapped, Boolean(options.reset));
-          console.log('Total messages after merge:', merged.length);
           return merged;
         });
         
