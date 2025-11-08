@@ -407,7 +407,13 @@ const Index = () => {
         .subscribe();
 
       const handleMessageChange = (payload: any) => {
-        console.log('Message realtime event:', payload.eventType, payload.new);
+        console.log('[Realtime] Message event received:', {
+          eventType: payload.eventType,
+          chatId: payload.new.chat_id,
+          messageId: payload.new.wa_message_id,
+          selectedChatId: selectedChatIdRef.current,
+          content: payload.new.content?.substring(0, 50)
+        });
         const mappedMessage = mapApiMessage(payload.new as any);
         const previewContent = mappedMessage.messageType === 'text'
           ? mappedMessage.content
@@ -460,7 +466,15 @@ const Index = () => {
         });
 
         // Update message list if chat is selected
-        if (selectedChatIdRef.current && payload.new.chat_id === selectedChatIdRef.current) {
+        const isChatSelected = selectedChatIdRef.current === payload.new.chat_id;
+        console.log('[Realtime] Chat selected check:', {
+          isChatSelected,
+          selectedChatIdRef: selectedChatIdRef.current,
+          messageChatId: payload.new.chat_id,
+          areEqual: selectedChatIdRef.current === payload.new.chat_id
+        });
+        
+        if (isChatSelected) {
           console.log('[Realtime Message] Adding to chat:', {
             chatId: payload.new.chat_id,
             messageId: mappedMessage.id,
