@@ -523,7 +523,10 @@ const Index = () => {
             table: 'messages',
             filter: `credential_id=eq.${credentialId}`,
           },
-          handleMessageChange
+          (payload) => {
+            console.log('Message INSERT event:', payload);
+            handleMessageChange(payload);
+          }
         )
         .on(
           'postgres_changes',
@@ -533,9 +536,14 @@ const Index = () => {
             table: 'messages',
             filter: `credential_id=eq.${credentialId}`,
           },
-          handleMessageChange
+          (payload) => {
+            console.log('Message UPDATE event:', payload);
+            handleMessageChange(payload);
+          }
         )
-        .subscribe();
+        .subscribe((status) => {
+          console.log('Messages channel status:', status);
+        });
 
       const chatLabelsChannel = supabase
         .channel('chat-labels-changes')
