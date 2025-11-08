@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ensureCredentialOwnership } from "../_shared/credential-guard.ts";
-import { ensureMessagesHistoryIntegration } from "../uaz-configure-events/ensure-webhook.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -235,17 +234,6 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const connected = typeof instanceData.status === 'object' && instanceData.status?.connected === true;
-
-    if (connected) {
-      try {
-        await ensureMessagesHistoryIntegration({
-          credential: ownedCredential,
-          supabaseClient,
-        });
-      } catch (integrationError) {
-        console.error('[UAZ Get QR] Failed to ensure incoming integration:', integrationError);
-      }
-    }
 
     return new Response(
       JSON.stringify({
